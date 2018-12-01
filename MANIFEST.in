@@ -1,0 +1,6 @@
+include LICENSE
+include *.rst
+recursive-include doc *.py *.rst Makefile
+recursive-include test *.py
+recursive-include vetk *.py
+graft vetk/data
