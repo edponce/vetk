@@ -1,19 +1,18 @@
 Vector Embedding Toolkit
 ========================
 
+This work is currently under development for the OSL at ORNL.
+
+
 Workflow
 --------
 
 1. Prepare text (e.g., single file with sentences delimited by newline)
 1. Run vector embedding software (e.g., word2vec)
-1. Load vector models by instantiating VectorEmbedding objects (vocabulary if
-   available)
-1. Compute attributes for each vector model (e.g, similarities and point
-   distances between vector pairs
+1. Load vector models by instantiating VectorEmbedding objects (vocabulary if available)
+1. Compute attributes for each vector model (e.g, similarities and point distances between vector pairs
 1. Instantiate a VectorEmbeddingAnalysis object with VectorEmbedding objects
 1. Compute statistics and plots to compare vector embeddings
-
-This work is currently under development for the OSL at ORNL.
 
 
 WordEmbedding

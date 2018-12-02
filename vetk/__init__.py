@@ -30,7 +30,7 @@ __keywords__ = [
     "word2vec",
     "natural language processing"
 ]
-__url__ = "https://github.com/edponce/vector-embedding-toolkit"
+__url__ = "https://github.com/edponce/vetk"
 __author__ = "Eduardo Ponce, Oak Ridge National Laboratory, Oak Ridge, TN"
 __author_email__ = "edponce2010@gmail.com"
 __license__ = "MIT"
