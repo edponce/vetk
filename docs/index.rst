@@ -5,8 +5,9 @@ Vector Embedding Toolkit (VETk) Documentation
 .. toctree::
     :maxdepth: 2
 
+    premods
     modules
-    main
+    postmods
 
 
 ==================

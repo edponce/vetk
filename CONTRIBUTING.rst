@@ -1,8 +1,11 @@
-============
 CONTRIBUTING
 ============
 
-Clone repository, make changes, fix bugs, improve, etc.
-Pull request
+All types of contributions are welcomed. A guide for developers will be made
+available soon.
 
-Thanks for contributing!
+Meanwhile:
+    * Clone repository
+    * Make improvements
+    * Fix bugs
+    * Make pull requests

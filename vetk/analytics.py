@@ -1,5 +1,8 @@
-#!/usr/bin/env python3
+"""WordEmbeddingAnalysis
 
+Classes:
+    :class:`WordEmbeddingAnalysis`
+"""
 # https://medium.com/@luckylwk/visualising-high-dimensional-datasets-using-pca-and-t-sne-in-python-8ef87e7915b
 # https://docs.scipy.org/doc/scipy/reference/stats.html
 # https://stackoverflow.com/questions/10374930/matplotlib-annotating-a-3d-scatter-plot
@@ -18,6 +21,7 @@
 #variant of EM is also known as "Gaussian Mixture Modeling" (GMM), where the
 #model are multivariate Gaussian distributions.
 
+
 import os
 import sys
 import math
@@ -31,8 +35,11 @@ import scipy
 from .clustering.mst import MSTClustering
 
 
+__all__ = ['WordEmbeddingAnalysis']
+
+
 class WordEmbeddingAnalysis:
-    '''
+    """
     Plot, analyze, and compare vector embeddings
 
     Notes:
@@ -41,7 +48,7 @@ class WordEmbeddingAnalysis:
 
     TODO:
         * Markersize should be list of list instead of list of numpy arrays
-    '''
+    """
     FP_PRECISION = 6
     COL_WIDTH = 10
 

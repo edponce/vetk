@@ -1,6 +1,8 @@
-include LICENSE
 include *.rst
+include LICENSE
+include *_requirements.txt
 recursive-include doc *.py *.rst Makefile
-recursive-include test *.py
 recursive-include vetk *.py
+recursive-include tests *.py
+recursive-include examples *.py
 graft vetk/data

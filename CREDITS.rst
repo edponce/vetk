@@ -1,14 +1,35 @@
-=======
 CREDITS
 =======
 
-Development Lead
-================
+Many thanks to all people who have provided useful feedback and recommendations
+during the development of SmartTimer.
+These credits use a convention based on `Linux CREDITS`_ where the fields are:
+name (N), email (E), web-address (W), country (C), description (D), issues (I).
 
-* Eduardo Ponce <poncemojicae@ornl.gov>
+
+Author
+------
+
+::
+
+    N: Eduardo Ponce
+    E: edponce2010@gmail.com
+    W: https://github.com/edponce
+    C: TN, USA
+    D: Lead developer
 
 
 Contributors
-============
+------------
 
-* Chris Gropp <groppcw@ornl.gov>
+::
+
+    N: Chris Gropp
+    E: cgropp@clemson.edu
+    W: https://github.com/groppcw
+    C: NC, USA
+    D: Developer
+
+
+
+.. _`Linux CREDITS`: https://github.com/torvalds/linux/blob/master/CREDITS

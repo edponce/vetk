@@ -1,5 +1,8 @@
-#!/usr/bin/env python3
+"""WordEmbedding
 
+Classes:
+    :class:`WordEmbedding`
+"""
 # https://medium.com/@luckylwk/visualising-high-dimensional-datasets-using-pca-and-t-sne-in-python-8ef87e7915b
 # https://docs.scipy.org/doc/scipy/reference/stats.html
 # https://stackoverflow.com/questions/10374930/matplotlib-annotating-a-3d-scatter-plot
@@ -28,14 +31,17 @@ import copy
 import scipy
 
 
+__all__ = ['WordEmbedding']
+
+
 class WordEmbedding:
-    '''Represents a vector embedding model
+    """Represents a vector embedding model
 
     Notes:
         * Only supports word2vec vector/vocabulary file formats in ASCII
         * Datatype of vectors is set to float32 for computing efficiency
         * Preferably, vocabulary should not contain whitespace (default delimiter)
-    '''
+    """
     FPPrecision = 6
     ColWidth = 10
     Delim = ' '

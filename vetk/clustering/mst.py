@@ -1,7 +1,11 @@
-"""
-Minimum Spanning Tree Clustering
+"""Minimum Spanning Tree Clustering
 https://github.com/jakevdp/mst_clustering
+
+Classes:
+    :class:`MSTClustering`
 """
+
+
 from __future__ import division
 
 import numpy as np
@@ -14,6 +18,9 @@ from sklearn.utils import check_array
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.neighbors import kneighbors_graph
 from sklearn.metrics import pairwise_distances
+
+
+__all__ = ['MSTClustering']
 
 
 class MSTClustering(BaseEstimator, ClusterMixin):
