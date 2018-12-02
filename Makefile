@@ -22,9 +22,10 @@ clean:
 	rm -rf *.egg-info .eggs
 	rm -rf .tox
 	rm -rf .coverage *coverage.* htmlcov
-	rm -rf "$(PKGDIR)/__pycache__"
-	rm -rf "$(TESTDIR)/__pycache__"
-	$(MAKE) -C $(DOCDIR) clean
+	rm -rf "$(PKGDIR)"/__pycache__
+	rm -rf "$(PKGDIR)"/clustering/__pycache__
+	rm -rf "$(TESTDIR)"/__pycache__
+	$(MAKE) -C "$(DOCDIR)" clean
 
 docs:
-	$(MAKE) -C $(DOCDIR) html
+	$(MAKE) -C "$(DOCDIR)" html
