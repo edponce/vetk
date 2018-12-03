@@ -4,7 +4,7 @@ import vetk as pkg
 
 
 # Load long description from files
-long_description = ''
+long_description = ""
 try:
     with open('README.rst') as fd:
         long_description = fd.read()
@@ -85,11 +85,10 @@ setup(
     author_email=pkg.__author_email__,
     license=pkg.__license__,
     classifiers=[
-#        "Development Status :: 5 - Production/Stable",
-        "Development Status :: 4 - Beta",
+        "Development Status :: 3 - Alpha",
         "Environment :: Console",
-        "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
+        "Intended Audience :: Developers",
         "Operating System :: OS Independent",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3.4",
@@ -97,8 +96,8 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Topic :: Documentation :: Sphinx",
         "Topic :: Software Development :: Libraries",
-        "Topic :: Scientific/Engineering :: Artificial Intelligence",
-        "Topic :: Scientific/Engineering :: Information Analysis"
+        "Topic :: Scientific/Engineering :: Information Analysis",
+        "Topic :: Scientific/Engineering :: Visualization"
         ],
     platforms=['Linux'],
     zip_safe=False,

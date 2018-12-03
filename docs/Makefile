@@ -7,7 +7,7 @@ SPHINXOPTS  := -W
 
 help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS)
-	@echo "  clean       to remove build documentation"
+	@echo "  clean       to remove generated output"
 
 clean:
 	rm -rf "$(BUILDDIR)"

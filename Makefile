@@ -13,9 +13,11 @@ help:
 
 build:
 	$(PYTHON) setup.py build
+	@echo "Setup build finished."
 
 wheel:
 	$(PYTHON) setup.py bdist_wheel
+	@echo "Setup wheel distribution finished."
 
 clean:
 	rm -rf flake8.out
