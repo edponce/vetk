@@ -10,8 +10,14 @@ Todo:
 """
 
 
-from .embeddings import *
-from .analytics import *
+from .embeddings import WordEmbedding
+from .analytics import WordEmbeddingAnalysis
+
+
+__all__ = [
+    'WordEmbedding',
+    'WordEmbeddingAnalysis'
+]
 
 
 __title__ = "Vector Embedding Toolkit (VETk)"
