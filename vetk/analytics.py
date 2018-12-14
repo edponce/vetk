@@ -310,7 +310,8 @@ class WordEmbeddingAnalysis:
         # Show/print figure
         matplotlib.pyplot.tight_layout()
         if file:
-            matplotlib.pyplot.savefig(self.file_prefix + file, bbox_inches='tight')
+            matplotlib.pyplot.savefig(self.file_prefix + file,
+            bbox_inches='tight', dpi=300)
         else:
             matplotlib.pyplot.show()
 
@@ -344,13 +345,13 @@ class WordEmbeddingAnalysis:
             * 2-D data populates only the lower triangular of the matrix
 
         TODO:
-            * Fix arrangement of name and keys, this might require changing how
+            * Fix arrangement of label and keys, this might require changing how
             _extend_label works
             * Arrangement is key-per-row, embedding-per-column
             * For arrangement, should we call _extend_label here
         '''
         data = []
-        name = [e.name for e in self.embedding]
+        name = [e.label for e in self.embedding]
         keys = []
         if key:
             tkey = self._unique(self._make_iterable(key))

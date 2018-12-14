@@ -47,18 +47,17 @@ class WordEmbedding:
     Delim = ' '
 
 
-    def __init__(self, vectors='', vocab='', name='', prefix=''):
-        self._dtype = numpy.float32
+    def __init__(self, label="", **kwargs):
+        self._dtype = kwargs.get('dtype', numpy.float32)
+        self._label = ""
+        self.label = kwargs.get('label', "")
+        self._filePrefix = ""
+        self.filePrefix = kwargs.get('prefix', "")
+
         self._vectorProcessingCount = 0 # number of vectors to process
         self._pairProcessingCount = 0 # number of vector pairs to process
         self._tripletProcessingCount = 0 # number of vector triplets to process
 
-        self._name = ''
-        self._filePrefix = ''
-        self._fileVocabulary = ''
-        self._fileVectors = ''
-
-        self.vectors = numpy.empty(shape=0, dtype=self._dtype)
         self.vocabulary = collections.OrderedDict()
 
         self.similarities = numpy.empty(shape=0, dtype=self._dtype)
@@ -67,29 +66,27 @@ class WordEmbedding:
         self.angle_pairs = numpy.empty(shape=0, dtype=self._dtype)
         self.angle_triplets = numpy.empty(shape=0, dtype=self._dtype)
 
-        ###########
-        # Setters #
-        ###########
-
-        self.name = name
-        self.filePrefix = prefix
-
         # Load data (vocabulary has precedence over vectors)
-        self.fileVocabulary = vocab
-        self.fileVectors = vectors
-
+        self._fileVectors = ""
+        self._fileVocabulary = ""
+        self.fileVocabulary = kwargs.get('vocabulary', "")
+        self.fileVectors = kwargs.get('vectors', "")
 
     def __str__(self):
-        data = 'Name: {}\n'.format(self.name)
-        data += 'Files:\n'
-        data += '  Prefix: {}\n'.format(self.filePrefix)
-        data += '  Vocabulary: {}\n'.format(self.fileVocabulary)
-        data += '  Vectors: {}\n'.format(self.fileVectors)
-        data +='Sizes:\n'
-        data +='  Vocabulary: {}\n'.format(len(self.vocabulary))
-        data +='  Vectors: {}'.format(self.vectors.shape)
-        return data
-
+        return "Label: {label}:\n" \
+               "Files:\n" \
+               "    Prefix: {prefix}\n" \
+               "    Vocabulary: {vocabulary}\n" \
+               "    Vectors: {vectors}\n" \
+               "Sizes:\n" \
+               "    Vocabulary: {vocab_size}\n" \
+               "    Vectors: {vec_size}" \
+               .format(label=self.label,
+                       prefix=self.filePrefix,
+                       vocabulary=self.fileVocabulary,
+                       vectors=self.fileVectors,
+                       vocab_size=len(self.vocabulary),
+                       vec_size=self.vectors.shape)
 
     def __getitem__(self, *keys):
         '''
@@ -122,7 +119,7 @@ class WordEmbedding:
                     # When an iterable or multiple keys are passed, the arguments are
                     # automatically organized as a tuple of tuple of values
                     # ((arg1,arg2),)
-                    if not hasattr(key, '__iter__'):
+                    if not hasattr(key, '__iter__') or isinstance(key, str):
                         key = [key]
 
                     # str: returns a list of vectors [v1,v2,...]
@@ -145,58 +142,47 @@ class WordEmbedding:
 
         return data
 
-
     @property
-    def name(self):
-        return self._name
+    def label(self):
+        return self._label
 
-
-    @name.setter
-    def name(self, arg):
-        '''Set instance name
-        '''
-        if isinstance(arg, str):
-            self._name = arg
-        else:
-            raise ValueError('ERROR: invalid name type \'{}\', allowed value '
-                             'is string'.format(type(arg)))
-
+    @label.setter
+    def label(self, label):
+        if not isinstance(label, str):
+            raise TypeError("label is not a {}".format(str))
+        self._label = label
 
     @property
     def filePrefix(self):
         return self._filePrefix
 
-
     @filePrefix.setter
-    def filePrefix(self, arg):
-        '''Set file prefix
+    def filePrefix(self, prefix):
+        if not isinstance(prefix, str):
+            raise TypeError("filePrefix is not a {}".format(str))
+        self._filePrefix = prefix
 
-        Notes:
-            * Always end prefix with a dash/underscore because it is prepended to filenames
-        '''
-        try:
-            if len(arg) > 0 and arg[-1] not in ['-', '_']:
-                arg += '-'
-            self._filePrefix = arg
-        except Exception as ex:
-            print(ex)
-
+        # Always end prefix with a dash/underscore because it is prepended to filenames
+        # Todo:
+        #   * Move this logic to the moment when it is used
+        if prefix and prefix[-1] not in ['-', '_']:
+            self._filePrefix += '-'
 
     @property
     def fileVectors(self):
         return self._fileVectors
 
-
     @fileVectors.setter
-    def fileVectors(self, arg):
-        '''Load data from vector file is assigned
-
+    def fileVectors(self, file):
+        """
         Notes:
             * Vectors are loaded only if a new and non-empty string is provided
             * If an empty string is provided, then vectors array is cleared
               and vocabulary (if it was loaded from vector file)
-        '''
-        if not arg:
+        """
+        if not isinstance(file, str):
+            raise TypeError("fileVectors is not a {}".format(str))
+        if not file:
             self._fileVectors = ''
             if self.vectors.size > 0:
                 self.vectors = numpy.empty(shape=0, dtype=self._dtype)
@@ -204,11 +190,11 @@ class WordEmbedding:
             # Clear vocabulary if it was loaded from vector file
             if not self.fileVocabulary and len(self.vocabulary) > 0:
                 self.vocabulary = collections.OrderedDict()
-        elif arg != self.fileVectors:
+        elif file != self.fileVectors:
             # Argument assignment needs to occur before loading to prevent
             # infinite recursion
-            self._fileVectors = arg
-            self.load_word2vec(arg)
+            self._fileVectors = file
+            self.load_word2vec(file)
 
 
     @property
@@ -404,10 +390,10 @@ class WordEmbedding:
 
         #self.vectors = numpy.empty(shape=0, dtype=self._dtype)
         #self.vocabulary = collections.OrderedDict()
-        self.name = ''
-        self.filePrefix = ''
-        self.fileVectors = ''
-        self.fileVocabulary = ''
+        self.label = ""
+        self.filePrefix = ""
+        self.fileVectors = ""
+        self.fileVocabulary = ""
         self.similarities = numpy.empty(shape=0, dtype=self._dtype)
         self.distances = numpy.empty(shape=0, dtype=self._dtype)
         self.point_distances = numpy.empty(shape=0, dtype=self._dtype)
