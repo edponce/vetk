@@ -58,6 +58,7 @@ class WordEmbedding:
         self._pairProcessingCount = 0 # number of vector pairs to process
         self._tripletProcessingCount = 0 # number of vector triplets to process
 
+        self.vectors = numpy.empty(shape=0, dtype=self._dtype)
         self.vocabulary = collections.OrderedDict()
 
         self.similarities = numpy.empty(shape=0, dtype=self._dtype)
