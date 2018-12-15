@@ -1,4 +1,4 @@
-"""Vector Embedding Toolkit (VETk) package.
+"""Vector Embedding Toolkit (VETkit) package.
 
 Todo:
     Improve handling of module imports vs special attributes if using
@@ -20,8 +20,8 @@ __all__ = [
 ]
 
 
-__title__ = "Vector Embedding Toolkit (VETk)"
-__name__ = "VETk"
+__title__ = "Vector Embedding Toolkit (VETkit)"
+__name__ = "VETkit"
 __version__ = "0.2.0"
 __description__ = "Analytics framework for vector embeddings"
 __keywords__ = [

@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 import re
-import vetk as pkg
+import vetkit as pkg
 
 
 # Load long description from files

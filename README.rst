@@ -1,7 +1,9 @@
 Vector Embedding Toolkit
 ========================
 
-This work is currently under development for the OSL at ORNL.
+![vetkit-logo](demo/vetkit-logo.png)
+
+This work is currently under development for the Open Source Lab at ORNL.
 
 
 Workflow

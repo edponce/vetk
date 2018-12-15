@@ -1,4 +1,4 @@
-PKGDIR  := vetk
+PKGDIR  := vetkit
 TESTDIR := tests
 PYTHON  := /opt/anaconda3/bin/python3
 DOCDIR  := docs

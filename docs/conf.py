@@ -5,7 +5,7 @@ import os
 import sys
 import re
 sys.path.append(os.path.abspath('..'))
-import vetk as pkg
+import vetkit as pkg
 
 
 # -- General configuration ------------------------------------------------

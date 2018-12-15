@@ -1,6 +1,6 @@
 [run]
 source =
-    vetk
+    vetkit
     tests
 branch = True
 parallel = True
