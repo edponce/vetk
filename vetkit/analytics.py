@@ -66,16 +66,13 @@ class WordEmbeddingAnalysis:
         self.file_prefix = prefix
         self.embedding = embedding
 
-
     def clear(self):
         self.file_prefix = ''
         self.embedding = []
 
-
     @property
     def file_prefix(self):
         return self._file_prefix
-
 
     @file_prefix.setter
     def file_prefix(self, prefix):
@@ -87,17 +84,14 @@ class WordEmbeddingAnalysis:
         else:
             self._file_prefix = prefix
 
-
     @property
     def embedding(self):
         return self._embedding
-
 
     @embedding.setter
     def embedding(self, embed):
         if embed:
             self._embedding = self._make_iterable(embed)
-
 
     def _calculate_subplots(self, n_plots):
         '''
@@ -108,7 +102,6 @@ class WordEmbeddingAnalysis:
         if n_plots > (n_rows * n_cols):
             n_cols += 1
         return n_rows, n_cols
-
 
     def _extend_label(self, label, n_labels):
         '''
@@ -133,7 +126,6 @@ class WordEmbeddingAnalysis:
             ext_label = n_labels * ['']
         return ext_label
 
-
     def _make_iterable(self, data, levels=1):
         '''
         Detect single/iterable data with 1-2 levels of iterables
@@ -153,7 +145,6 @@ class WordEmbeddingAnalysis:
         except:
             iter_data = [data]
         return iter_data
-
 
     def _sphere_coordinates(self, center, radius):
         '''
@@ -176,7 +167,6 @@ class WordEmbeddingAnalysis:
         z = center[2] + radius * numpy.outer(numpy.ones(u.size), numpy.cos(v))
 
         return x, y, z
-
 
     def _plot_wrapper(self, plot_type, data, vocab=[], xlabel=[], ylabel=[],
     zlabel=[], title=[], label=[], markersize=[], center=[], file=''):
@@ -315,7 +305,6 @@ class WordEmbeddingAnalysis:
         else:
             matplotlib.pyplot.show()
 
-
     def _unique(self, data):
         '''
         Generate a unique list/tuple in same order as they appear in paramter
@@ -334,7 +323,6 @@ class WordEmbeddingAnalysis:
             raise ValueError('Invalid data type \'{}\', valid types are list/tuple'.format(type(data)))
 
         return uniq
-
 
     def _get_embedding_data(self, key='', dim=1):
         '''
@@ -376,7 +364,6 @@ class WordEmbeddingAnalysis:
 
         return data, name, keys
 
-
     def histogram(self, key, embedding=[], file=''):
         '''Create histogram plot
         '''
@@ -384,12 +371,10 @@ class WordEmbeddingAnalysis:
         data, name, keys = self._get_embedding_data(key)
         self._plot_wrapper(plot_type='histogram', data=data, xlabel=keys, ylabel='Frequency', title=name, file=file)
 
-
     def boxplot(self, key, embedding=[], file=''):
         self.embedding = embedding
         data, name, keys = self._get_embedding_data(key)
         self._plot_wrapper(plot_type='boxplot', data=data, ylabel=keys, title=name, file=file)
-
 
     def lineplot(self, key, embedding=[], file=''):
         '''
@@ -399,7 +384,6 @@ class WordEmbeddingAnalysis:
         data, name, keys = self._get_embedding_data(key)
         self._plot_wrapper(plot_type='lineplot', data=data, ylabel=keys, title=name, file=file)
 
-
     def matrixplot(self, key, embedding=[], file=''):
         '''Create a similarity matrix plot
         A square matrix with size as vocabulary is initialized to zeros, then
@@ -408,7 +392,6 @@ class WordEmbeddingAnalysis:
         self.embedding = embedding
         data, name, keys = self._get_embedding_data(key, dim=2)
         self._plot_wrapper(plot_type='matrix', data=data, xlabel=keys, title=name, file=file)
-
 
     def pca(self, dim=2, embedding=[], show_vocab=False, file=''):
         '''PCA (Principal Component Analysis)
@@ -448,7 +431,6 @@ class WordEmbeddingAnalysis:
             self._plot_wrapper(plot_type='scatter', data=tdata, vocab=vocab, xlabel='PC1', ylabel='PC2', zlabel='PC3', title=name, markersize=markersize, file=file)
 
         return data, model, name
-
 
     def tsne(self, dim=2, embedding=[], show_vocab=False, file=''):
         '''t-SNE (t-Distributed Stochastic Neighbor Embedding)
@@ -491,7 +473,6 @@ class WordEmbeddingAnalysis:
 
         return data, model, name
 
-
     def anova(self, key, embedding=[], test='oneway'):
         '''ANOVA
         Perform 1-way ANOVA (mean) or Kruskal-Wallis H-test (median)
@@ -517,7 +498,6 @@ class WordEmbeddingAnalysis:
             print(sfmt.format('p-value', s.pvalue))
 
         return stat, keys, name
-
 
     def correlation(self, key, y, embedding=[]):
         '''
@@ -568,7 +548,6 @@ class WordEmbeddingAnalysis:
             print(sfmt.format('p-value', *[c for _, c in corr]))
             print()
 
-
     def kmeans(self, data=[], num_clusters=3, embedding=[]):
         '''K-means clustering
         The classic implementation of the clustering method based on the
@@ -591,7 +570,6 @@ class WordEmbeddingAnalysis:
 
         return labels, model, name
 
-
     def spectral(self, data=[], num_clusters=3, embedding=[]):
         '''Spectral clustering
         https://scikit-learn.org/stable/modules/generated/sklearn.cluster.SpectralClustering.html#sklearn.cluster.SpectralClustering
@@ -613,7 +591,6 @@ class WordEmbeddingAnalysis:
 
         return labels, model, name
 
-
     def birch(self, data=[], num_clusters=3, embedding=[]):
         '''Birch clustering
         https://scikit-learn.org/stable/modules/generated/sklearn.cluster.Birch.html#sklearn.cluster.Birch
@@ -634,7 +611,6 @@ class WordEmbeddingAnalysis:
 
         return labels, model, name
 
-
     def mini_batch_kmeans(self, data=[], num_clusters=3, embedding=[]):
         '''Mini-batch K-means clustering
         '''
@@ -653,7 +629,6 @@ class WordEmbeddingAnalysis:
             model.append(m)
 
         return labels, model, name
-
 
     def mean_shift(self, data=[], bin_seeding=True, cluster_all=True, embedding=[]):
         '''Mean-shift clustering
@@ -676,7 +651,6 @@ class WordEmbeddingAnalysis:
 
         return labels, model, name
 
-
     def gmm(self, data=[], num_clusters=3, covar_type='diag', embedding=[]):
         '''Gaussian mixture models clustering (expectation maximization)
         '''
@@ -697,7 +671,6 @@ class WordEmbeddingAnalysis:
 
         return labels, model, name
 
-
     def bayesian_gmm(self, data=[], num_clusters=3, covar_type='diag', embedding=[]):
         '''Bayesian Gaussian mixture models clustering (expectation maximization)
         '''
@@ -717,7 +690,6 @@ class WordEmbeddingAnalysis:
             model.append(m)
 
         return labels, model, name
-
 
     def reduction_clustering(self, reduce, cluster, dim=2, num_clusters=3,
     cutoff=0.3, covar_type='diag', embedding=[], file=''):
@@ -846,7 +818,6 @@ class WordEmbeddingAnalysis:
 
         return data, labels, name, rmodel, cmodel
 
-
     def affinity_propagation(self, data=[], embedding=[]):
         '''Affinity propagation clustering
         Clustering algorithm based on 'message passing'
@@ -868,7 +839,6 @@ class WordEmbeddingAnalysis:
 
         return labels, model, name
 
-
     def agglomerative(self, data=[], num_clusters=3, embedding=[]):
         '''Agglomerative clustering
         https://scikit-learn.org/stable/modules/generated/sklearn.cluster.AgglomerativeClustering.html#sklearn.cluster.AgglomerativeClustering
@@ -888,7 +858,6 @@ class WordEmbeddingAnalysis:
             labels.append(m.labels_)
 
         return labels, model, name
-
 
     def min_spanning_tree(self, data=[], cutoff=0.3, embedding=[]):
         '''Minimum spanning tree clustering
@@ -917,7 +886,6 @@ class WordEmbeddingAnalysis:
             labels.append(m.labels_)
 
         return labels, model, name
-
 
     def silhouette(self, labels, data=[], embedding=[]):
         '''Silhouette analysis

@@ -2,12 +2,6 @@
 
 Classes:
     :class:`WordEmbedding`
-
-Todo:
-    * For analogy tests or topN methods, add a flag for caching. Caching can be
-      implemented using a dictionary of a given size, that maps words (not
-      vectors).
-    * Support binary embeddings.
 """
 # https://medium.com/@luckylwk/visualising-high-dimensional-datasets-using-pca-and-t-sne-in-python-8ef87e7915b
 # https://docs.scipy.org/doc/scipy/reference/stats.html
@@ -44,14 +38,14 @@ class WordEmbedding:
     """Represents a vector embedding model
 
     Notes:
-        * Only supports word2vec vector/vocabulary file formats in ASCII
+        * Only supports word2vec vector/vocabulary file formats
         * Datatype of vectors is set to float32 for computing efficiency
         * Vocabulary should not contain class delimiter (default is blank)
 
     .. code: python
 
-        v.set_processing_count(k=1, frac=1)
-        v.set_processing_count(k=2, frac=1)
+        v.set_processing_count(k=1, frac=1.)
+        v.set_processing_count(k=2, frac=1.)
         v.set_processing_count(k=3, frac=0.25)
     """
     FPPrecision = 6
@@ -59,41 +53,66 @@ class WordEmbedding:
     Delim = ' '
 
     def __init__(self, **kwargs):
-        self.dtype = kwargs.get('dtype', numpy.float32)
-        self.label = kwargs.get('label', "")
+        # Initialize using reset method, internally object's data members are
+        # created with default values.
+        self.reset()
 
-        self._fileVocabulary = ""
-        self.vocabulary = collections.OrderedDict()
+        self.dtype = kwargs.get('dtype', self.dtype)
+        self.label = kwargs.get('label', self.label)
+        self._model = kwargs.get('model', self.model)
 
+        self.load_embedding_model(vectors=kwargs.get('vectors', None),
+                                  vocab=kwargs.get('vocabulary', None),
+                                  model=self.model,
+                                  n=kwargs.get('n', 1.))
+
+    def _clear_vectors(self):
+        """Clear vectors current state, set to initial state."""
+        # Set data members directly to create them when called from __init__
         self._fileVectors = ""
-        self.vectors = numpy.empty(shape=0, dtype=self.dtype)
-
-        self.fileVocabulary = kwargs.get('vocabulary', "")
-        self.fileVectors = kwargs.get('vectors', "")
-
+        self._vectors = numpy.empty(shape=0, dtype=self.dtype)
         self.similarities = numpy.empty(shape=0, dtype=self.dtype)
         self.distances = numpy.empty(shape=0, dtype=self.dtype)
         self.point_distances = numpy.empty(shape=0, dtype=self.dtype)
         self.angle_pairs = numpy.empty(shape=0, dtype=self.dtype)
         self.angle_triplets = numpy.empty(shape=0, dtype=self.dtype)
 
-        self._vectorProcessingCount = 0 # number of vectors to process
-        self._pairProcessingCount = 0 # number of vector pairs to process
-        self._tripletProcessingCount = 0 # number of vector triplets to process
+    def _clear_vocabulary(self):
+        """Clear vocabulary current state, set to initial state."""
+        # Set data members directly to create them when called from __init__
+        self._fileVocabulary = ""
+        self._vocabulary = collections.OrderedDict()
 
+    def clear(self):
+        """Clear vocabulary and vectors current state, set to initial state."""
+        self._clear_vocabulary()
+        self._clear_vectors()
+
+    def reset(self):
+        """Reset object to initial state."""
+        # Set data members directly to create them when called from __init__
+        self.dtype = numpy.float32  # set first to make it available
+        self.label = ""
+        self._model = 'word2vec'
+        self.clear()
+        self._vectorProcessingCount = 0
+        self._pairProcessingCount = 0
+        self._tripletProcessingCount = 0
 
     def __str__(self):
-        return "Label: {label}:\n" \
-               "Files:\n" \
-               "    Vectors: {vectors}\n" \
-               "    Vocabulary: {vocabulary}\n" \
-               "Sizes:\n" \
-               "    Vectors: {vec_size}\n" \
-               "    Vocabulary: {vocab_size}" \
+        return "Label: {label}\n" \
+               "Model: {model}\n" \
+               "Vectors:\n" \
+               "  File: {vectors}\n" \
+               "  Size: {vector_size}\n" \
+               "Vocabulary:\n" \
+               "  File: {vocabulary}\n" \
+               "  Size: {vocab_size}" \
                .format(label=self.label,
-                       vectors=os.path.abspath(self.fileVectors),
-                       vocabulary=os.path.abspath(self.fileVocabulary),
-                       vec_size=self.vectors.shape,
+                       model=self.model,
+                       vectors=self.fileVectors,
+                       vocabulary=self.fileVocabulary,
+                       vector_size=self.vectors.shape,
                        vocab_size=len(self.vocabulary))
 
     def __len__(self):
@@ -104,107 +123,255 @@ class WordEmbedding:
 
         Args:
             keys (str, int, slice, iterable): If string, then consider it as a
-                vocabulary word and return vector. If key is integer, then
-                consider it as an index and return tuple with vocabulary word
-                and vector. Key can be a slice or an iterable of integers or
-                strings.
+                vocabulary word and return vector. If integer or slice, then
+                consider it as an index and return vocabulary word. *keys* can
+                be a slice or an iterable of all integers or all strings.
 
         Returns:
-            numpy.ndarray, tuple: Vector or tuple with word and vector.
+            numpy.ndarray: Vectors.
+            str or list of str: Words.
 
         Raises:
-            KeyError: If *keys* is not found.
+            KeyError: If *keys* is invalid type.
         """
         data = []
         for key in keys:
-            try:
-                # Using list(zip()) runs the generator fully. To return a
-                # generator need to remove list().
-                # Note: slices always return a list
-                if isinstance(key, slice):
-                    if key != slice(None):
-                        return list(zip(list(self.vocabulary)[key], self.vectors[key]))
-                    else:
-                        return list(zip(self.vocabulary, self.vectors))
+            # slice: returns a list of words [w1,w2,...]
+            if isinstance(key, slice):
+                data = list(self.vocabulary)[key]
+            else:
+                # Ensure 'key' is a single level iterable to allow loop processing.
+                # When an iterable or multiple keys are passed, the arguments are
+                # automatically organized as a tuple of tuple of values
+                # ((arg1,arg2),)
+                if not hasattr(key, '__iter__') or isinstance(key, str):
+                    key = [key]
 
+                # str: returns an array of vectors [v1,v2,...]
+                # int: returns a list of words [w1,w2,...]
+                if all(isinstance(k, str) for k in key):
+                    vocab = list(self.vocabulary)
+                    data = numpy.empty(shape=(len(key), self.vectors.shape[1]), dtype=self.dtype)
+                    for i, k in enumerate(key):
+                        data[i][:] = self.vectors[vocab.index(k)]
+                elif all(isinstance(k, int) for k in key):
+                    vocab = list(self.vocabulary)
+                    data = [vocab[k] for k in key]
                 else:
-                    # Ensure 'key' is a single level iterable to allow loop processing.
-                    # When an iterable or multiple keys are passed, the arguments are
-                    # automatically organized as a tuple of tuple of values
-                    # ((arg1,arg2),)
-                    if not hasattr(key, '__iter__') or isinstance(key, str):
-                        key = [key]
+                    raise KeyError('Invalid key \'{}\' for {} '
+                                   'object'.format(key, repr(self)))
 
-                    # str: returns a list of vectors [v1,v2,...]
-                    # int: returns a list of tuples [(w1, v1),(w2,v2),...]
-                    if all(isinstance(k, str) for k in key):
-                        vocab = list(self.vocabulary)
-                        data = [self.vectors[vocab.index(k)] for k in key]
-                    elif all(isinstance(k, int) for k in key):
-                        vocab = list(self.vocabulary)
-                        data = [(vocab[k], self.vectors[k]) for k in key]
-                    else:
-                        raise KeyError('Invalid key \'{}\' for {} '
-                                       'object'.format(key, repr(self)))
-            except (IndexError, ValueError) as ex:
-                print(ex)
+        # Do not return a list when there is only a single item.
+        # This allows direct vector arithmetic.
+        return data[0] if len(data) == 1 else data
 
-        # Return the items when there is only a single item
-        # This is important for supporting vector arithmetic.
-        if len(data) == 1: data = data[0]
-
-        return data
+    @property
+    def model(self):
+        return self._model
 
     @property
     def fileVectors(self):
         return self._fileVectors
 
-    @fileVectors.setter
-    def fileVectors(self, file):
-        """Load data from given vector file."""
-        if not file:
-            self._fileVectors = ""
-            if self.vectors.size > 0:
-                self.vectors = numpy.empty(shape=0, dtype=self.dtype)
-        else:
-            self._fileVectors = file
-            self.load_vectors(file)
-
     @property
     def fileVocabulary(self):
         return self._fileVocabulary
 
-    @fileVocabulary.setter
-    def fileVocabulary(self, file):
-        """Assign and load data from given vocabulary file."""
-        if not file:
-            self._fileVocabulary = ""
-            if len(self.vocabulary) > 0:
-                self.vocabulary = collections.OrderedDict()
-        else:
-            self._fileVocabulary = file
-            self.load_vocabulary(file)
+    @property
+    def vectors(self):
+        return self._vectors
 
-    def load_embedding_model(self, vectors="", vocab="", n=1):
+    @vectors.setter
+    def vectors(self, arg):
+        self.load_vectors(arg)
+
+    @property
+    def vocabulary(self):
+        return self._vocabulary
+
+    @vocabulary.setter
+    def vocabulary(self, arg):
+        self.load_vocabulary(arg)
+
+    def load_embedding_model(self, vectors, vocab="", model='', n=1.):
         """Load an embedding model and vocabulary.
-
-        Currently, only supports word2vec ASCII output.
 
         Args:
             vectors: See :meth:`load_vectors`.
-            vocab: See :meth:`load_vocab`.
+            vocab: See :meth:`load_vocabulary`.
             n: See :meth:`load_vectors` or :meth:`load_vocabulary`.
         """
-        # Vocabulary file has precedence over vector file because if a
-        # vocabulary file is provided then vocabulary is extracted from it,
-        # else the vocabulary is extracted from vector file.
-        self.load_vocabulary(vocab, n)
-        self.load_vectors(vectors, n)
+        # Vocabulary data has precedence over vector data because words and
+        # occurrences are obtained from vocabulary data. If no vocabulary data
+        # is provided then only words are obtained from vector data.
+        if vocab:
+            self.load_vocabulary(vocab, model, n)
+        if vectors:
+            self.load_vectors(vectors, model, n)
 
-    def load_vectors(self, vectors, n=1):
+    def _get_range(self, n, *arg):
+        """Construct a range from different forms of input.
+
+        Todo:
+            * Remove n and merge into args parameter.
+            * Raise error instead of printing warnings.
+
+        Args:
+            slice, list, tuple, numeric, multiple args: Values representing a
+                range. List and tuple should have at least 2 elements, [begin,
+                end]. For integer, range is first *n* elements.  Multiple
+                arguments represent [begin, end, step]. Default step is 1.
+
+        Returns:
+            list: [begin, end, step] or [begin, None, step].
+                For invalid cases [0, 0, 1].
+        """
+        # Extract ranges
+        if len(arg) == 0:
+            if isinstance(n, slice):
+                r = [n.start, n.stop, n.step if n.step else 1]
+            elif isinstance(n, (list, tuple)):
+                r = [n[0], n[1], n[2] if len(n) > 2 else 1]
+            elif isinstance(n , (int, float)) or n is None:
+                r = [0, n, 1]
+            else:
+                print("WARN: Invalid type of range values, {}".format([n, *arg]))
+                return [0, 0, 1]
+        elif len(arg) == 1:
+            r = [n, *arg, 1]
+        elif len(arg) == 2:
+            r = [n, *arg]
+        else:
+            print("WARN: Too many range values, {}".format([n, *arg]))
+            return [0, 0, 1]
+
+        # Follow slice behavior, support None
+        if r[0] is None:
+            r[0] = 0
+        if r[2] is None:
+            r[2] = 1
+        if r[1] is None:
+            # No support for negative ranges because the length of the data is
+            # unknown. Also, step has to move from begin to end.
+            if r[0] < 0 or r[2] <= 0:
+                print("WARN: Invalid range, {}".format(r))
+                return [0, 0, 1]
+            else:
+                return [int(x) if x else x for x in r]
+
+        # No support for negative ranges because the length of the data is
+        # unknown. Also, step has to move from begin to end.
+        else:
+            if r[0] < 0 or r[1] < 0 or r[2] == 0 or \
+                (r[0] > r[1] and r[2] > 0) or (r[0] < r[1] and r[2] < 0):
+                print("WARN: Invalid range, {}".format(r))
+                return [0, 0, 1]
+
+        # Swap
+        if r[0] > r[1]:
+            r[:2] = r[1::-1]
+            r[2] = abs(r[2])
+        return [int(x) for x in r]
+
+    def _load_word2vec_vectors(self, n=1., load_vocab=False):
+        """Load word2vec embedding model."""
+        # Check if file format is ASCII or binary
+        # Get data dimensions
+        try:
+            with open(self.fileVectors) as fd:
+                dims = tuple(int(dim) for dim in fd.readline().strip().split())
+            binary = 0
+        except UnicodeDecodeError as ex:
+            with open(self.fileVectors, 'rb') as fd:
+                dims = tuple(int(dim) for dim in fd.readline().strip().split())
+            binary = 1
+
+        # Get line range to process
+        if isinstance(n, (int, float)):
+            n = self._processing_count(dims[0], n)
+        r = self._get_range(n)
+
+        if binary == 0:
+            # ASCII format
+            with open(self.fileVectors) as fd:
+                _ = fd.readline()  # discard header, already read
+                self._vectors = numpy.empty(shape=(r[1] - r[0], dims[1]), dtype=self.dtype)
+                line_curr = r[0]
+                j = 0
+                for i, line in enumerate(fd):
+                    if i < r[0]: continue
+
+                    # For iterables, if None is used as the end value, the
+                    # range returns None as well.
+                    if r[1] is not None and i >= r[1]: break
+                    if i == line_curr:
+                        line_curr += r[2]
+                        word, vector = line.strip().split(maxsplit=1)
+                        if load_vocab:
+                            self._vocabulary[word] = 0
+                        self._vectors[j][:] = numpy.fromstring(vector, sep=' ', dtype=self.dtype)
+                        j += 1
+        elif binary == 1:
+            # Binary format
+            with open(self.fileVectors, 'rb') as fd:
+                _ = fd.readline()  # discard header, already read
+                self._vectors = numpy.empty(shape=(r[1] - r[0], dims[1]), dtype=self.dtype)
+                line_len = dims[1] * numpy.dtype(self.dtype).itemsize
+                line_curr = r[0]
+                parse_completed = False
+                chunk_size = 1024 * 1024
+                chunk = b''
+                tmp_chunk = b''
+                i = 0
+                j = 0
+                while True:
+                    # First part of current line
+                    if not chunk:
+                        chunk = fd.read(chunk_size)
+
+                        # EOF?
+                        if not chunk: break
+
+                    #word, chunk = chunk.split(maxsplit=1)
+                    blank_idx = chunk.index(b' ')
+                    word = chunk[:blank_idx]
+                    chunk = chunk[blank_idx + 1:]  # skip blank space
+
+                    # Read remaining vector bytes
+                    while (len(chunk) <= line_len):
+                        tmp_chunk = fd.read(chunk_size)
+
+                        # EOF? but we are not done
+                        if not tmp_chunk:
+                            raise Exception("ERROR: failed to parse vector file")
+                        chunk += tmp_chunk
+
+                    # Extract vector
+                    vector = chunk[:line_len]
+
+                    # Trim chunk, skip newline
+                    chunk = chunk[line_len + 1:]
+
+                    i += 1
+
+                    if i < r[0]: continue
+                    if i >= r[1]: break
+                    if i == line_curr:
+                        print(i, word)
+                        self._vectors[j][:] = numpy.frombuffer(vector, dtype=self.dtype)
+                        if load_vocab:
+                            self._vocabulary[word] = 0
+                        line_curr += r[2]
+                        j += 1
+                    if i == r[1]:
+                        parse_completed = True
+                        break
+                if not parse_completed:
+                    raise Exception("ERROR: failed to parse vector file")
+
+    def load_vectors(self, vectors, model='', n=1.):
         """Load an embedding model from word2vec output.
 
-        Currently only supports ASCII format.
         If vocabulary is empty then the words in vector file will be used to
         populate the vocabulary (occurrences will be set to 0).
 
@@ -212,16 +379,20 @@ class WordEmbedding:
 
             # Process entire file
             v.load_vectors("...")
-            v.load_vectors("...", n=1)
+            v.load_vectors("...", n=1.)
 
             # Process first 10 lines
             v.load_vectors("...", n=10)
 
             # Process lines 10 through 20, [10,20]
             v.load_vectors("...", n=slice(10,21))
+            v.load_vectors("...", n=(10,21))
+            v.load_vectors("...", n=[10,21])
 
             # Process every other line from lines 10 through 20, [10,20]
             v.load_vectors("...", n=slice(10,21,2))
+            v.load_vectors("...", n=(10,21,2))
+            v.load_vectors("...", n=[10,21,2])
 
         Args:
             vectors (str, numpy.ndarray): If string, then consider it as a
@@ -231,121 +402,57 @@ class WordEmbedding:
                 numpy.ndarray, then a deep copy is performed.
 
             n (float, int, slice): If float (0,1], then it is used as a
-                fraction corresponding to first n*N words. If int, then it is
-                used to select the first n words, N[:floor(n)]. If slice, then
-                it is used as a range of words, N[n1:n2:ns].
+                fraction corresponding to first n*N words, [0,n*N). If int,
+                then it is used to select the first n words, [0,floor(n)). If
+                slice, tuple, or list then it is used as a range of words,
+                [n1,n2,ns).
 
         Raises:
             ValueError: If *vectors* is not a valid type.
         """
+        if model:
+            self._model = model
+
+        self._clear_vectors()
         if isinstance(vectors, str):
-            self._fileVectors = vectors
-            self.vectors = numpy.empty(shape=0, dtype=self.dtype)
+            if not os.path.isfile(vectors):
+                raise FileNotFoundError(vectors)
+            self._fileVectors = os.path.abspath(vectors)
 
-            # Calculate lines to process
-            if isinstance(n, slice):
-                line_begin = n.start
-                line_end = n.stop
-                line_step = n.step if n.step else 1
+            # Check either fileVocabulary or dictionary because they should be
+            # consistent.
+            if not self._fileVocabulary or len(self._vocabulary) == 0
+                self._fileVocabulary = self._fileVectors
+                load_vocab = True
             else:
-                # Get number of lines from file only if n = (0,1).
-                # If n = 1, then set line_end = -1 to process all lines.
-                # Subtract 1 from file lines to ignore line with embedding dimensions.
-                nlines = n if n > 1 else self._get_nlines_from_file(self._fileVectors) - 1
-                line_begin = 0
-                line_end = -1 if n == 1 else self._processing_count(nlines, n)
-                line_step = 1
+                load_vocab = False
 
-            if line_end != 0:
-                try:
-                    with open(self._fileVectors) as fd:
-                        dims = tuple(int(dim) for dim in fd.readline().strip().split())
-                        if line_end > 0:
-                            self.vectors = numpy.empty(shape=(line_end - line_begin, dims[1]), dtype=self.dtype)
-                        else:
-                            self.vectors = numpy.empty(shape=dims, dtype=self.dtype)
-
-                        if len(self.vocabulary) == 0:
-                            line_curr = line_begin
-                            for i, line in enumerate(fd):
-                                # Do not stop if line_end is negative
-                                if line_end > 0 and i >= line_end: break
-                                if i < line_begin: continue
-                                if i == line_curr:
-                                    word, vector = line.strip().split(maxsplit=1)
-                                    self.vectors[i][:] = numpy.fromstring(vector, sep=' ', dtype=self.dtype)
-                                    self.vocabulary[word] = 0
-                                    line_curr += line_step
-                        else:
-                            line_curr = line_begin
-                            for i, line in enumerate(fd):
-                                # Do not stop if line_end is negative
-                                if line_end > 0 and i >= line_end: break
-                                if i < line_begin: continue
-                                if i == line_curr:
-                                    word, vector = line.strip().split(maxsplit=1)
-                                    self.vectors[i][:] = numpy.fromstring(vector, sep=' ', dtype=self.dtype)
-                                    line_curr += line_step
-                except UnicodeDecodeError as ex:
-                    with open(self._fileVectors, 'rb') as fd:
-                        dims = tuple(int(dim) for dim in fd.readline().strip().split())
-                        if line_end > 0:
-                            self.vectors = numpy.empty(shape=(line_end - line_begin, dims[1]), dtype=self.dtype)
-                        else:
-                            self.vectors = numpy.empty(shape=dims, dtype=self.dtype)
-
-                        if len(self.vocabulary) == 0:
-                            line_len = self.vectors.shape[1] * numpy.dtype(self.dtype).itemsize
-                            line_curr = line_begin
-                            vector = b''
-                            i = -1
-                            for line_part in fd:
-                                # First pass for current line
-                                if not vector:
-                                    word, vector = line_part.split(maxsplit=1)
-                                    continue
-
-                                # Accumulate a vector in bytes
-                                vector += line_part
-                                if len(vector) < line_len:
-                                    continue
-                                i += 1
-
-                                # Do not stop if line_end is negative
-                                if line_end > 0 and i >= line_end: break
-                                if i < line_begin:
-                                    vector = b''
-                                    continue
-                                if i == line_curr:
-                                    self.vectors[i][:] = numpy.frombuffer(vector[:-1], dtype=self.dtype)
-                                    self.vocabulary[word] = 0
-                                    line_curr += line_step
-                                    vector = b''
+            if self.model == 'word2vec':
+                self._load_word2vec_vectors(n, load_vocab)
+            else:
+                raise ValueError('ERROR: Invalid vectors model \'{}\''.format(model))
         elif isinstance(vectors, numpy.ndarray):
-            self._fileVectors = ""
-
-            # Calculate lines to process
-            lines = n if isinstance(n, slice) else slice(0, self._processing_count(vectors.shape[0], n), 1)
-
-            if lines.stop > 0:
-                self.vectors = copy.deepcopy(vectors[lines])
-            else:
-                self.vectors = numpy.empty(shape=0, dtype=self.dtype)
+            # Get line range to process
+            if isinstance(n, (int, float)):
+                n = self._processing_count(vectors.shape[0], n)
+            self._vectors = copy.deepcopy(vectors[slice(*self._get_range(n))])
         else:
-            self._fileVectors = ""
-            self.vectors = numpy.empty(shape=0, dtype=self.dtype)
             raise ValueError('ERROR: Invalid vectors type \'{}\', allowed values are '
                              'string and numpy.ndarray'.format(type(vectors)))
 
-        self.set_processing_count(k=1, frac=1)
-        self.set_processing_count(k=2, frac=1)
-        self.set_processing_count(k=3, frac=1)
+        print(self.vectors.shape)
+        self.set_processing_count(k=1, frac=1.)
+        self.set_processing_count(k=2, frac=1.)
+        self.set_processing_count(k=3, frac=1.)
 
-        if len(self.vocabulary) > 0 and not self._is_consistent():
+        if len(self._vocabulary) > 0 and not self._is_consistent():
             print('WARN: Vector and vocabulary are inconsistent in size')
 
-    def load_vocabulary(self, vocab, n=1):
+    def load_vocabulary(self, vocab, model='', n=1.):
         """Load vocabulary from file or given object.
+
+        Todo:
+            * Add hooks to select vocabulary data based on model.
 
         .. code: python
 
@@ -361,6 +468,8 @@ class WordEmbedding:
 
             # Process every other line from lines 10 through 20, [10,20]
             v.load_vocabulary("...", n=slice(10,21,2))
+            v.load_vocabulary("...", n=(10,21,2))
+            v.load_vocabulary("...", n=[10,21,2])
 
         Args:
             vocab (str, collections.OrderedDict): If string, then consider it
@@ -370,32 +479,44 @@ class WordEmbedding:
                 collections.OrderedDict, then a deep copy is performed.
 
             n (float, int, slice): If float (0,1], then it is used as a
-                fraction corresponding to first n*N words. If int, then it is
-                used to select the first n words, N[:floor(n)]. If slice, then
-                it is used as a range of words, N[n1:n2:ns].
+                fraction corresponding to first n*N words, [0,n*N). If int,
+                then it is used to select the first n words, [0,floor(n)). If
+                slice, tuple, or list then it is used as a range of words,
+                [n1,n2,ns).
 
         Raises:
             ValueError: If *vocab* is not a valid type.
         """
+        # Hack to prevent call from __init__ fail
+        if vocab is None: return
+
         if isinstance(vocab, str):
-            self._fileVocabulary= vocab
-            self.vocabulary = collections.OrderedDict()
+            self._clear_vocabulary()
+            if not os.path.isfile(vocab):
+                raise FileNotFoundError(vocab)
+            self._fileVocabulary= os.path.abspath(vocab)
 
             # Calculate lines to process
             if isinstance(n, slice):
                 line_begin = n.start
                 line_end = n.stop
                 line_step = n.step if n.step else 1
+            # Iterable must have at least 2 elements (start, stop, step)
+            elif isinstance(n, (list, tuple)):
+                line_begin = n[0]
+                line_end = n[1]
+                line_step = n[2] if len(n) > 2 else 1
+            # Assume it is an integer
             else:
                 # Get number of lines from file only if n = (0,1).
                 # If n = 1, then set line_end = -1 to process all lines.
-                nlines = n if n > 1 else self._get_nlines_from_file(self._fileVocabulary)
+                nlines = n if n > 1 else self._get_nlines_from_file(self.fileVocabulary)
                 line_begin = 0
                 line_end = -1 if n == 1 else self._processing_count(nlines, n)
                 line_step = 1
 
             if line_end != 0:
-                with open(self._fileVocabulary) as fd:
+                with open(self.fileVocabulary) as fd:
                     line_curr = line_begin
                     for i, line in enumerate(fd):
                         # Do not stop if line_end is negative
@@ -403,17 +524,23 @@ class WordEmbedding:
                         if i < line_begin: continue
                         if i == line_curr:
                             word, count = line.strip().split(maxsplit=1)
-                            self.vocabulary[word] = int(count)
+                            self._vocabulary[word] = int(count)
                             line_curr += line_step
         elif isinstance(vocab, collections.OrderedDict):
+            self._clear_vocabulary()
             self._fileVocabulary= vocab
-            self.vocabulary = collections.OrderedDict()
 
             # Calculate lines to process
             if isinstance(n, slice):
                 line_begin = n.start
                 line_end = n.stop
                 line_step = n.step if n.step else 1
+            # Iterable must have at least 2 elements (start, stop, step)
+            elif isinstance(n, (list, tuple)):
+                line_begin = n[0]
+                line_end = n[1]
+                line_step = n[2] if len(n) > 2 else 1
+            # Assume it is an integer
             else:
                 line_begin = 0
                 line_end = self._processing_count(len(vocab), n)
@@ -421,29 +548,34 @@ class WordEmbedding:
 
             if line_end != 0:
                 if line_end == len(vocab):
-                    self.vocabulary = copy.deepcopy(vocab)
+                    self._vocabulary = copy.deepcopy(vocab)
                 else:
                     line_curr = line_begin
                     for i, (word, count) in enumerate(vocab.items()):
                         if i >= line_end: break
                         if i < line_begin: continue
                         if i == line_curr:
-                            self.vocabulary[word] = count
+                            self._vocabulary[word] = count
                             line_curr += line_step
         else:
-            self._fileVocabulary = ""
-            self.vocabulary = collections.OrderedDict()
+            self._clear_vocabulary()
             raise ValueError('Invalid vocabulary type \'{}\', allowed values '
                              'are string and collections.OrderedDict'
                              .format(type(vocab)))
 
         self.set_processing_count(k=1, frac=1)
 
+        if model:
+            self._model = model
+
         if self.vectors.size > 0 and not self._is_consistent():
             print('WARN: Vector and vocabulary are inconsistent in size')
 
     def _get_nlines_from_file(self, file, sizehint=1024 * 1024):
-        """Calculate number of lines in a given file.
+        """Calculate number of lines in a given text file.
+
+        Notes:
+            Does not support binary encoded files.
 
         Args:
             file (str): Input file.
@@ -459,7 +591,7 @@ class WordEmbedding:
                 buf = fd.read(sizehint)
         return N
 
-    def write_vectors(self, file="", n=1):
+    def write_vectors(self, file="", n=1.):
         """Write/print vectors from an embedding model.
 
         Format follows word2vec output (ASCII).
@@ -472,6 +604,12 @@ class WordEmbedding:
             line_begin = n.start
             line_end = n.stop
             line_step = n.step if n.step else 1
+        # Iterable must have at least 2 elements (start, stop, step)
+        elif isinstance(n, (list, tuple)):
+            line_begin = n[0]
+            line_end = n[1]
+            line_step = n[2] if len(n) > 2 else 1
+        # Assume it is numeric
         else:
             line_begin = 0
             line_end = self._processing_count(self.vectors.shape[0], n)
@@ -505,7 +643,7 @@ class WordEmbedding:
                     print(fmt.format(word, *vector))
                     line_curr += line_step
 
-    def write_vocabulary(self, file="", n=1):
+    def write_vocabulary(self, file="", n=1.):
         """Write/print vocabulary from an embedding model.
 
         Format follows word2vec output where words are ordered by occurrences
@@ -519,6 +657,12 @@ class WordEmbedding:
             line_begin = n.start
             line_end = n.stop
             line_step = n.step if n.step else 1
+        # Iterable must have at least 2 elements (start, stop, step)
+        elif isinstance(n, (list, tuple)):
+            line_begin = n[0]
+            line_end = n[1]
+            line_step = n[2] if len(n) > 2 else 1
+        # Assume it is numeric
         else:
             line_begin = 0
             line_end = self._processing_count(len(self.vocabulary), n)
@@ -544,22 +688,6 @@ class WordEmbedding:
                     print('{} {}'.format(word, count))
                     line_curr += line_step
 
-    def clear(self):
-        """Reset object to initial state."""
-        self.label = ""
-        self.fileVectors = ""
-        self.fileVocabulary = ""
-
-        self.similarities = numpy.empty(shape=0, dtype=self.dtype)
-        self.distances = numpy.empty(shape=0, dtype=self.dtype)
-        self.point_distances = numpy.empty(shape=0, dtype=self.dtype)
-        self.angle_pairs = numpy.empty(shape=0, dtype=self.dtype)
-        self.angle_triplets = numpy.empty(shape=0, dtype=self.dtype)
-
-        self._vectorProcessingCount = 0
-        self._pairProcessingCount = 0
-        self._tripletProcessingCount = 0
-
     def _is_consistent(self):
         """Check size consistency between vectors and vocabulary.
 
@@ -581,17 +709,27 @@ class WordEmbedding:
             N = math.factorial(n) // (math.factorial(k) * math.factorial(n - k))
         return N
 
-    def _processing_count(self, n, frac=1):
+    def _processing_count(self, n, frac=1.):
         """
         Calculate number of data to processed based on either:
-            * Fraction - n = (0,1]
-            * Selection - n > 1
+            * Fraction (float) - n = (0.,1.]
+            * Selection (int) - n = [0, ...]
+
+        Floating-point values are considered as percentages.
+        Negative values are set to zero and values greater than 1. are set to
+        1..
+
+        n is considered as an integer.
         """
         N = 0
-        if frac > 0 and frac <= 1:
-            N = math.ceil(frac * (n))
-        elif frac > 1:
-            N = min(int(frac), n)
+        if isinstance(frac, float):
+            if frac < 0.:
+                frac = 0.
+            elif frac > 1.:
+                frac = 1.
+            N = round(frac * int(n))
+        elif isinstance(frac, int):
+            N = min(frac, int(n))
         return N
 
     def set_processing_count(self, k, frac):
