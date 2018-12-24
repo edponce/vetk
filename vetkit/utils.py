@@ -21,12 +21,11 @@ def convert_to_range(n, data=None):
             range. List and tuple should have at least 2 elements, [start,
             stop]. For integer and floating point, invokes
             *select_from_data(size of data, n*.
-
-        data (str, int, numpy.ndarray, object, None): If str it is considered a file
-            and newlines are counted as the total size of data. If integer it
-            is considered as the actual data size. If numpy array or object,
-            then its length is used as data size. If None, *data* has no
-            effect.
+        data (str, int, numpy.ndarray, object, None, optional): If str it is
+            considered a file and newlines are counted as the total size of
+            data. If integer it is considered as the actual data size. If numpy
+            array or object, then its length is used as data size. If None,
+            *data* has no effect. Default is None.
 
     Returns:
         list: Range representation [start, stop, step] or [start, None, step].
@@ -107,12 +106,11 @@ def select_from_data(n, frac=1.):
 
     Args:
         n (int): Size of data.
-
-        frac (int, float): Fraction or selection value. A floating-point value
-            is used as a ratio with respect to n, [0, n*N] (if greater than 1.,
-            it is set to 1.). An integer value is used as a selection value
-            with respect to n, [0, n] (if greater than n, it is set to n).
-            Negative values are set to 0.
+        frac (int, float, optional): Fraction or selection value. A
+            floating-point value is used as a ratio with respect to n, [0, n*N]
+            (if greater than 1., it is set to 1.). An integer value is used as
+            a selection value with respect to n, [0, n] (if greater than n, it
+            is set to n). Negative values are set to 0. Default is 1..
 
     Returns:
         int: Number of elements.
@@ -134,9 +132,8 @@ def n_choose_k(n, k):
     C(n,k) = n!/(k!(n-k)!))
 
     Args:
-        n (int): Number of elements. 
-
-        k (int): k-distinct elements. 
+        n (int): Number of elements.
+        k (int): k-distinct elements.
 
     Returns:
         int: Number of combinations.
@@ -147,13 +144,12 @@ def n_choose_k(n, k):
     return N
 
 
-def count_lines_in_file(file, size_hint=1024*1024):
+def count_lines_in_file(file, size_hint=2**20):
     """Calculate number of newlines in a given text file.
 
     Args:
         file (str): Input file.
-
-        size_hint (int): Size in bytes to read at a time.
+        size_hint (int, optional): Bytes to read at a time. Default is 1 MB.
 
     Returns:
         int: Number of newlines.
@@ -165,5 +161,3 @@ def count_lines_in_file(file, size_hint=1024*1024):
             N += buf.count('\n')
             buf = fd.read(size_hint)
     return N
-
-

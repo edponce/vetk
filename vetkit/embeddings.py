@@ -1,27 +1,19 @@
-"""WordEmbedding
+"""Class representing a vector embedding model of words.
 
 Classes:
     :class:`WordEmbedding`
 
 Todo:
     * Provide list-like and slice support to vocabulary data structure.
+    * Vectors can be filtered by range, fraction, amount, blacklist, whitelist,
+      or occurrence values. Should filtering be performed during load, runtime,
+      dump, or all?
+        * For very large datasets, filtering during load is necessary.
+        * Runtime can be easily implemented with a method to trigger filtering.
+        * Current implementation supports filtering only during load.
+    * Add a verbosity data member.
 """
-# https://medium.com/@luckylwk/visualising-high-dimensional-datasets-using-pca-and-t-sne-in-python-8ef87e7915b
 # https://docs.scipy.org/doc/scipy/reference/stats.html
-# https://stackoverflow.com/questions/10374930/matplotlib-annotating-a-3d-scatter-plot
-# https://www.datacamp.com/community/tutorials/apache-spark-python
-# https://jakevdp.github.io/PythonDataScienceHandbook/05.12-gaussian-mixtures.html
-# http://scikit-learn.org/stable/modules/model_evaluation.html
-
-
-# Notes:
-#There is no "k-means algorithm". There is MacQueens algorithm for k-means, the
-#Lloyd/Forgy algorithm for k-means, the Hartigan-Wong method, ...
-#
-#There also isn't "the" EM-algorithm. It is a general scheme of repeatedly
-#expecting the likelihoods and then maximizing the model. The most popular
-#variant of EM is also known as "Gaussian Mixture Modeling" (GMM), where the
-#model are multivariate Gaussian distributions.
 
 
 import re
@@ -29,51 +21,102 @@ from collections import OrderedDict
 from copy import deepcopy
 import numpy
 import scipy
-from .utils import (convert_to_range, n_choose_k, select_from_data)
-from .models import (load_vectors_word2vec, load_vocabulary_word2vec)
+from .utils import (convert_to_range, n_choose_k)
+from .models import (load_vectors_word2vec, load_vocabulary_word2vec,
+                     dump_vectors_word2vec, dump_vocabulary_word2vec)
 
 
 __all__ = ['WordEmbedding']
 
 
 class WordEmbedding:
-    """Represents a vector embedding model
+    """Represents a vector embedding model of words.
+
+    Args:
+        vectors (str, numpy.ndarray): If string, then consider it as a file in
+            word2vec format. If numpy.ndarray, then a deep copy is performed.
+        vocabulary (str, dict): If string, then consider it as a file in
+            word2vec format. If dict, then a deep copy is performed.
+
+    Members:
+        embeddingFilter (range, slice, list, tuple, float, int, None): Values
+            representing a range to filter file processing,
+            see *utils.convert_to_range()*. Filtering is only performed during
+            load operations (runtime or dump are not filtered).
 
     Notes:
+        * Vectors and vocabulary should match and be ordered by word
+          occurrences in decreasing order.
         * Only supports word2vec vector/vocabulary file formats
         * Datatype of vectors is set to float32 for computing efficiency
+
+    .. code: python
+
+        # Set embedding model
+        v.model = 'word2vec'
+
+        # Load entire dataset
+        v.embeddingFilter = 1.
+        v.load_embedding_model(...)
+
+        # Load entire dataset
+        v.embeddingFilter = None
+        v.load_embedding_model(...)
+
+        # Load first half dataset
+        v.embeddingFilter = 1.
+        v.load_embedding_model(...)
+
+        # Process first 10 lines
+        v.embeddingFilter = 10
+        v.load_embedding_model(...)
+
+        # Process lines 10 through 20, [10,20]
+        v.embeddingFilter = range(10,21)
+        v.embeddingFilter = slice(10,21)
+        v.embeddingFilter = (10,21)
+        v.embeddingFilter = [10,21]
+        v.load_embedding_model(...)
+
+        # Process every other line from lines 10 through 20, [10,20]
+        v.embeddingFilter = range(10,21,2)
+        v.embeddingFilter = slice(10,21,2)
+        v.embeddingFilter = (10,21,2)
+        v.embeddingFilter = [10,21,2]
+        v.load_embedding_model(...)
     """
     FPPrecision = 6
     ColWidth = 10
     Delim = ' '
 
-    def __init__(self, vectors=None, vocab=None, model='word2vec',
-                 n=1., label="", dtype=numpy.float32):
-        # Use reset() to create internal object's data members
+    def __init__(self, vectors=None, vocab=None, model='word2vec', label="",
+                 dtype=numpy.float32):
+        # Use reset() to indirectly create internal object's data members
         self.reset()
 
-        self.dtype = dtype
         self.label = label
         self.model = model
+        self.dtype = dtype
 
-        self.load_embedding_model(vectors, vocab, n)
+        self.load_embedding_model(vectors, vocab)
 
     def reset(self):
-        """Reset object to initial state."""
-        # Set data members directly to create them when called from __init__
-        self.dtype = numpy.float32  # set first to make it available
+        """Reset instance to initial state."""
         self.label = ""
         self.model = 'word2vec'
+        self.dtype = numpy.float32
+        self.embeddingFilter = 1.
+        #self.embeddingBlacklist = []
+        #self.embeddingWhitelist = []
         self.clear()
 
     def clear(self):
-        """Clear vocabulary and vectors current state, set to initial state."""
+        """Set vectors and vocabulary to initial state."""
         self._clear_vocabulary()
         self._clear_vectors()
 
     def _clear_vectors(self):
-        """Clear vectors current state, set to initial state."""
-        # Set data members directly to create them when called from __init__
+        """Set vectors to initial state."""
         self._fileVectors = ""
         self._vectors = numpy.empty(shape=0, dtype=self.dtype)
         self.similarities = numpy.empty(shape=0, dtype=self.dtype)
@@ -83,8 +126,7 @@ class WordEmbedding:
         self.angle_triplets = numpy.empty(shape=0, dtype=self.dtype)
 
     def _clear_vocabulary(self):
-        """Clear vocabulary current state, set to initial state."""
-        # Set data members directly to create them when called from __init__
+        """Set vocabulary to initial state."""
         self._fileVocabulary = ""
         self._vocabulary = OrderedDict()
 
@@ -107,10 +149,11 @@ class WordEmbedding:
         """Use dictionary syntax to access vector/vocabulary.
 
         Args:
-            keys (str, int, range, slice, list, tuple): If str, then consider
-                it as a vocabulary word and return vector. If integer, range,
-                or slice, then consider it as an index and return vocabulary
-                word. *keys* must be all of the same type, integers or strings.
+            keys (str, int, range, slice, list, tuple): If string, consider it
+                as a vocabulary word and return vector. If integer, range, or
+                slice, then consider it as an index and return vocabulary word.
+                If list or tuple, *keys* must be all of the same type, integers
+                or strings.
 
         Returns:
             numpy.ndarray: Vectors.
@@ -151,7 +194,7 @@ class WordEmbedding:
                     raise KeyError("invalid key type/value '{}'".format(key))
 
         # Do not return a list when there is only a single item.
-        # This allows direct vector arithmetic.
+        # This allows vector algebra: v['king'] + v['man'] - # v['queen'].
         return data[0] if len(data) == 1 else data
 
     @property
@@ -178,65 +221,32 @@ class WordEmbedding:
     def vocabulary(self, vocab):
         self.load_embedding_model(vocab=vocab)
 
-    def load_embedding_model(self, vectors=None, vocab=None, n=1.):
+    def load_embedding_model(self, vectors=None, vocab=None):
         """Wrapper method to load a vector embedding model and vocabulary.
 
         Args:
-            vectors: See :meth:`_load_vectors`.
-
-            vocab: See :meth:`_load_vocabulary`.
-
-            n: See :meth:`_load_vectors` or :meth:`_load_vocabulary`.
+            vectors (str, numpy.ndarray, optional): See :class:`WordEmbedding`.
+            vocab (str, dict, optional): See :class:`WordEmbedding`.
 
         Raises:
-            UserWarning: If *v.vectors* and *v.vocabulary* sizes are
-                inconsistent.
+            UserWarning: If *vectors* and *vocabulary* sizes are inconsistent.
         """
         # Vocabulary data has precedence over vector data because words and
         # occurrences are obtained from vocabulary data. If no vocabulary data
         # is provided then only words are obtained from vector data.
-        if vocab:
-            self._load_vocabulary(vocab, n)
-        if vectors:
-            self._load_vectors(vectors, n)
+        if vocab is not None:
+            self._load_vocabulary(vocab)
+        if vectors is not None:
+            self._load_vectors(vectors)
 
         if not self._is_consistent():
             raise UserWarning("vector and vocabulary are inconsistent in size")
 
-    def _load_vectors(self, vectors, n=1.):
-        """Load an embedding model from word2vec output.
-
-        .. code: python
-
-            # Process entire file
-            v.load_vectors(...)
-            v.load_vectors(..., n=1.)
-            v.load_vectors(..., n=None)
-
-            # Process first 10 lines
-            v.load_vectors(..., n=10)
-
-            # Process lines 10 through 20, [10,20]
-            v.load_vectors(..., n=range(10,21))
-            v.load_vectors(..., n=slice(10,21))
-            v.load_vectors(..., n=(10,21))
-            v.load_vectors(..., n=[10,21])
-
-            # Process every other line from lines 10 through 20, [10,20]
-            v.load_vectors(..., n=range(10,21,2))
-            v.load_vectors(..., n=slice(10,21,2))
-            v.load_vectors(..., n=(10,21,2))
-            v.load_vectors(..., n=[10,21,2])
+    def _load_vectors(self, vectors):
+        """Load a vector embedding model from a file or similar data structure.
 
         Args:
-            vectors (str, numpy.ndarray): If string, then consider it as a
-                vector file based on original word2vec format, words and
-                vectors. Vectors are ordered by occurrences in decreasing order
-                which is the default behavior of original word2vec. If
-                numpy.ndarray, then a deep copy is performed.
-
-            n (range, slice, list, tuple, float, int): Values representing a
-                range for vectors, see *utils.convert_to_range()*.
+            vectors: See :class:`WordEmbedding`.
 
         Raises:
             ValueError: If *v.model* is not a valid value.
@@ -248,47 +258,23 @@ class WordEmbedding:
                 self._fileVectors = vectors
                 if len(self._vocabulary) == 0:
                     self._fileVocabulary = self._fileVectors
-                    self._vectors, self._vocabulary = load_vectors_word2vec(vectors, n, True, self.dtype)
+                    self._vectors, self._vocabulary = load_vectors_word2vec(vectors, True, self.embeddingFilter, self.dtype)
                 else:
-                    self._vectors, _ = load_vectors_word2vec(vectors, n, False, self.dtype)
+                    self._vectors, _ = load_vectors_word2vec(vectors, False, self.embeddingFilter, self.dtype)
             else:
                 raise ValueError("invalid model value '{}'".format(self.model))
         elif isinstance(vectors, numpy.ndarray):
             self._fileVectors = ""
-            r = convert_to_range(n, vectors)
+            r = convert_to_range(self.embeddingFilter, vectors)
             self._vectors = deepcopy(vectors[slice(*r)])
         else:
             raise TypeError("invalid vectors type '{}'".format(type(vectors)))
 
-    def _load_vocabulary(self, vocab, n=1.):
+    def _load_vocabulary(self, vocab):
         """Load vocabulary from file or given object.
 
-        .. code: python
-
-            # Process entire file
-            v.load_vocabulary(...)
-            v.load_vocabulary(..., n=1.)
-            v.load_vocabulary(..., n=None)
-
-            # Process first 10 lines
-            v.load_vocabulary(..., n=10)
-
-            # Process lines 10 through 20, [10,20]
-            v.load_vocabulary(..., n=range(10,21))
-            v.load_vocabulary(..., n=slice(10,21))
-
-            # Process every other line from lines 10 through 20, [10,20]
-            v.load_vocabulary(..., n=range(10,21,2))
-            v.load_vocabulary(..., n=slice(10,21,2))
-            v.load_vocabulary(..., n=(10,21,2))
-            v.load_vocabulary(..., n=[10,21,2])
-
         Args:
-            vocab (str, dict): If str, then consider it as a vocabulary file.
-                If dict, then a deep copy of selected elements is performed.
-
-            n (range, slice, list, tuple, float, int): Values representing a
-                range, see *utils.convert_to_range()*.
+            vocab: See :class:`WordEmbedding`.
 
         Raises:
             ValueError: If *v.model* is not a valid value.
@@ -298,12 +284,12 @@ class WordEmbedding:
         if isinstance(vocab, str):
             if self.model == 'word2vec':
                 self._fileVocabulary = vocab
-                self._vocabulary = load_vocabulary_word2vec(vocab, n)
+                self._vocabulary = load_vocabulary_word2vec(vocab, self.embeddingFilter)
             else:
                 raise ValueError("invalid model '{}'".format(self.model))
         elif isinstance(vocab, dict):
             self._fileVocabulary = ""
-            r = convert_to_range(n, vocab)
+            r = convert_to_range(self.embeddingFilter, vocab)
             line_curr = r[0]
             for i, (word, count) in enumerate(vocab.items()):
                 if i < r[0]: continue
@@ -314,114 +300,111 @@ class WordEmbedding:
         else:
             raise TypeError("invalid vocabulary type '{}'".format(type(vocab)))
 
-    def write_vectors(self, file="", n=1.):
-        """Write/print vectors from an embedding model.
-
-        Format follows word2vec output (ASCII).
+    def common(self, n=10):
+        """Find the words/vectors with most or least occurrences.
 
         Args:
-            file (str, optional): Input file.
+            n (int, optional): If positive, then number of most common words.
+                If negative, then number of least common words.
+
+        Returns:
+            list: List of common words.
         """
-        # Calculate lines to process
-        if isinstance(n, (range, slice)):
-            line_begin = n.start
-            line_end = n.stop
-            line_step = n.step if n.step else 1
-        # Iterable must have at least 2 elements (start, stop, step)
-        elif isinstance(n, (list, tuple)):
-            line_begin = n[0]
-            line_end = n[1]
-            line_step = n[2] if len(n) > 2 else 1
-        # Assume it is numeric
-        else:
-            line_begin = 0
-            line_end = select_from_data(self.vectors.shape[0], n)
-            line_step = 1
+        vocab = list(self.vocabulary)
+        return vocab[:n] if n >= 0 else vocab[n:]
 
-        if line_end == 0: return
+    def dump_embedding_model(self, vectors=None, vocab=None, binary=False):
+        """Wrapper to write/print vectors/vocabulary from an embedding model.
 
-        if file:
-            with open(file, 'w') as fd:
-                fmt = ' '.join(['{}'] + self.vectors.shape[1] *
-                               ['{:.' + str(self.FPPrecision) + 'f}']) + '\n'
-                fd.write('{} {}\n'.format(n, self.vectors.shape[1]))
-                line_curr = line_begin
-                for i, (word, vector) in enumerate(zip(self.vocabulary.keys(),
-                                                       self.vectors)):
-                    if i >= line_end: break
-                    if i < line_begin: continue
-                    if i == line_curr:
-                        fd.write(fmt.format(word, *vector))
-                        line_curr += line_step
-        else:
-            fmt = ' '.join(['{}'] + self.vectors.shape[1] *
-                           ['{:.' + str(self.FPPrecision) + 'f}'])
-            print('{} {}'.format(n, self.vectors.shape[1]))
-            line_curr = line_begin
-            for i, (word, vector) in enumerate(zip(self.vocabulary.keys(),
-                                                   self.vectors)):
-                if i >= line_end: break
-                if i < line_begin: continue
-                if i == line_curr:
-                    print(fmt.format(word, *vector))
-                    line_curr += line_step
-
-    def write_vocabulary(self, file="", n=1.):
-        """Write/print vocabulary from an embedding model.
-
-        Format follows word2vec output where words are ordered by occurrences
-        in decreasing order.
+        For *vectors* and *vocab* arguments, if non-empty string, consider it a
+        file and write data. If empty string, print data. If None, no action is
+        performed.
 
         Args:
-            file (str, optional): Input file.
+            vectors (str, None, optional): Output file/method for vectors.
+                Default is None.
+            vocab (str, None, optional): Output file/method for vocabulary.
+                Default is None.
+            binary (bool, optional): Control written encoding of vectors.
+                Default is False.
         """
-        # Calculate lines to process
-        if isinstance(n, (range, slice)):
-            line_begin = n.start
-            line_end = n.stop
-            line_step = n.step if n.step else 1
-        # Iterable must have at least 2 elements (start, stop, step)
-        elif isinstance(n, (list, tuple)):
-            line_begin = n[0]
-            line_end = n[1]
-            line_step = n[2] if len(n) > 2 else 1
-        # Assume it is numeric
-        else:
-            line_begin = 0
-            line_end = select_from_data(len(self.vocabulary), n)
-            line_step = 1
+        if vectors is not None:
+            if vectors:
+                self._dump_vectors(vectors, binary)
+            else:
+                self._print_vectors()
 
-        if line_end == 0: return
+        if vocab is not None:
+            if vocab:
+                self._dump_vocabulary(vocab)
+            else:
+                self._print_vocabulary()
 
-        if file:
-            with open(file, 'w') as fd:
-                line_curr = line_begin
-                for i, (word, count) in enumerate(self.vocabulary.items()):
-                    if i >= line_end: break
-                    if i < line_begin: continue
-                    if i == line_curr:
-                        fd.write('{} {}\n'.format(word, count))
-                        line_curr += line_step
+    def _dump_vectors(self, file, binary=False):
+        """Write vectors from an embedding model.
+
+        Args:
+            file (str): Output file.
+            binary (bool, optional): Set write to use binary format. Default is
+                False.
+        """
+        if self.model == 'word2vec':
+            dump_vectors_word2vec(file, self.vectors, self.vocabulary, binary)
         else:
-            line_curr = line_begin
-            for i, (word, count) in enumerate(self.vocabulary.items()):
-                if i >= line_end: break
-                if i < line_begin: continue
-                if i == line_curr:
-                    print('{} {}'.format(word, count))
-                    line_curr += line_step
+            raise ValueError("invalid model value '{}'".format(self.model))
+
+    def _dump_vocabulary(self, file):
+        """Write vocabulary from an embedding model.
+
+        Args:
+            file (str): Output file.
+        """
+        if self.model == 'word2vec':
+            dump_vocabulary_word2vec(file, self.vocabulary)
+        else:
+            raise ValueError("invalid model value '{}'".format(self.model))
+
+    def _print_vectors(self):
+        """Print vectors from an embedding model."""
+        if not self._is_consistent():
+            raise UserWarning("vector and vocabulary are inconsistent in size")
+
+        for word, vector in zip(self.vocabulary.keys(), self.vectors):
+            print(word, vector)
+
+    def _print_vocabulary(self):
+        """Print vocabulary from an embedding model."""
+        for word, count in self.vocabulary.items():
+            print(word, count)
 
     def _is_consistent(self):
         """Check size consistency between vectors and vocabulary.
 
+        Inconsistency occurs when both vectors and vocabulary contain active
+        elements but sizes do not match. Otherwise, they are consistent.
+
         Returns:
-            bool: True if vector and vocabulary sizes match when both contain
-                active elements, False otherwise.
+            bool: True if sizes are consistent. False otherwise.
         """
         if self.vectors.size > 0 and len(self.vocabulary) > 0:
             return self.vectors.shape[0] == len(self.vocabulary)
         else:
             return True
+
+    def scale_vectors(self):
+        """Scale vectors to zero mean and unit variance."""
+        sklearn.preprocessing.scale(self.vectors, copy=False)
+
+    def get(self, key):
+        """
+        Returns data corresponding to attribute represented by given key string
+        Key is used in lower-case form and spaces are replaced with
+        underscores, this allows using 'angle pairs' for self.angle_pairs
+
+        Notes:
+            * Pre/trailing whitespaces are ignored
+        """
+        return self.__dict__[re.sub('\s+', '_', key.strip()).lower()]
 
     def _word_pairs(self, k, index=False):
         """Find word/index pairs/triplets.
@@ -450,21 +433,6 @@ class WordEmbedding:
                             for y in range(x + 1, len(self.vocabulary) - 1)
                             for z in range(y + 1, len(self.vocabulary))]
         return pairs
-
-    def scale_vectors(self):
-        """Scale vectors to zero mean and unit variance."""
-        sklearn.preprocessing.scale(self.vectors, copy=False)
-
-    def get(self, key):
-        """
-        Returns data corresponding to attribute represented by given key string
-        Key is used in lower-case form and spaces are replaced with
-        underscores, this allows using 'angle pairs' for self.angle_pairs
-
-        Notes:
-            * Pre/trailing whitespaces are ignored
-        """
-        return self.__dict__[re.sub('\s+', '_', key.strip()).lower()]
 
     def process_attributes(self, k):
         """Compute vector pair/triplet attributes.
