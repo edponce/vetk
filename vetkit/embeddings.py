@@ -6,22 +6,25 @@ Classes:
 Todo:
     * Provide list-like and slice support to vocabulary data structure.
     * Vectors can be filtered by range, fraction, amount, blacklist, whitelist,
-      or occurrence values. Should filtering be performed during load, runtime,
-      dump, or all?
+      occurrence values, regex, etc.. Should filtering be performed during
+      load, runtime, dump, or all?
         * For very large datasets, filtering during load is necessary.
         * Runtime can be easily implemented with a method to trigger filtering.
         * Current implementation supports filtering only during load.
     * Add a verbosity data member.
+    * For functions/methods that support multiprocessing, add a variant
+      triggered that is triggered by class member to control threads/processes.
 """
 # https://docs.scipy.org/doc/scipy/reference/stats.html
 
 
+import os
 import re
 from collections import OrderedDict
 from copy import deepcopy
 import numpy
 import scipy
-from .utils import (convert_to_range, n_choose_k)
+from .utils import (convert_to_range, n_choose_k, extract_tokens_from_file)
 from .models import (load_vectors_word2vec, load_vocabulary_word2vec,
                      dump_vectors_word2vec, dump_vocabulary_word2vec)
 
@@ -33,16 +36,19 @@ class WordEmbedding:
     """Represents a vector embedding model of words.
 
     Args:
-        vectors (str, numpy.ndarray): If string, then consider it as a file in
-            word2vec format. If numpy.ndarray, then a deep copy is performed.
-        vocabulary (str, dict): If string, then consider it as a file in
-            word2vec format. If dict, then a deep copy is performed.
+        vectors (str, numpy.ndarray, list, tuple, optional): If string, then
+            consider it as a file in word2vec format. If numpy.ndarray, then a
+            deep copy is performed. If list or tuple, a copy is performed.
+            Default is empty numpy.ndarray.
+        vocabulary (str, dict, optional): If string, then consider it as a file
+            in word2vec format. If dict, then a deep copy is performed. Default
+            is empty OrderedDict.
 
     Members:
-        embeddingFilter (range, slice, list, tuple, float, int, None): Values
-            representing a range to filter file processing,
+        embeddingFilter (range, slice, list, tuple, float, int, None,
+            optional): Values representing a range to filter file processing,
             see *utils.convert_to_range()*. Filtering is only performed during
-            load operations (runtime or dump are not filtered).
+            load operations (runtime or dump are not filtered). Default is 1.0.
 
     Notes:
         * Vectors and vocabulary should match and be ordered by word
@@ -64,7 +70,7 @@ class WordEmbedding:
         v.load_embedding_model(...)
 
         # Load first half dataset
-        v.embeddingFilter = 1.
+        v.embeddingFilter = .5
         v.load_embedding_model(...)
 
         # Process first 10 lines
@@ -89,13 +95,14 @@ class WordEmbedding:
     ColWidth = 10
     Delim = ' '
 
-    def __init__(self, vectors=None, vocab=None, model='word2vec', label="",
-                 dtype=numpy.float32):
+    def __init__(self, vectors=None, vocab=None, label="", model='word2vec',
+                 filt=1., dtype=numpy.float32):
         # Use reset() to indirectly create internal object's data members
         self.reset()
 
         self.label = label
         self.model = model
+        self.embeddingFilter = filt
         self.dtype = dtype
 
         self.load_embedding_model(vectors, vocab)
@@ -104,9 +111,8 @@ class WordEmbedding:
         """Reset instance to initial state."""
         self.label = ""
         self.model = 'word2vec'
+        self._embeddingFilter = 1.
         self.dtype = numpy.float32
-        self.embeddingFilter = 1.
-        #self.embeddingBlacklist = []
         #self.embeddingWhitelist = []
         self.clear()
 
@@ -198,6 +204,27 @@ class WordEmbedding:
         return data[0] if len(data) == 1 else data
 
     @property
+    def embeddingFilter(self):
+        return self._embeddingFilter
+
+    @embeddingFilter.setter
+    def embeddingFilter(self, val):
+        if isinstance(val, str):
+            # File with blacklist tokens
+            self._embeddingFilter = extract_tokens_from_file(val)
+        elif isinstance(val, dict):
+            # Dictionary with blacklist tokens
+            self._embeddingFilter = val
+        elif hasattr(val, (list, tuple)) and isinstance(val[0], str):
+            # Iterable with blacklist tokens
+            self._embeddingFilter = {}
+            for token in val:
+                self._embeddingFilter[token] = self._embeddingFilter.get(token, 0) + 1
+        else:
+            # Range-like expression
+            self._embeddingFilter = val
+
+    @property
     def fileVectors(self):
         return self._fileVectors
 
@@ -267,6 +294,10 @@ class WordEmbedding:
             self._fileVectors = ""
             r = convert_to_range(self.embeddingFilter, vectors)
             self._vectors = deepcopy(vectors[slice(*r)])
+        elif isinstance(vectors, (list, tuple)):
+            self._fileVectors = ""
+            r = convert_to_range(self.embeddingFilter, vectors)
+            self._vectors = numpy.array(vectors[slice(*r)])
         else:
             raise TypeError("invalid vectors type '{}'".format(type(vectors)))
 
@@ -519,10 +550,11 @@ class WordEmbedding:
         k = 2  # number of initial columns that are not floating-point
         if file:
             with open(file, 'w') as fd:
+                newline = os.linesep
                 gfmt =  '{}'
                 fpfmt = '{:.' + str(self.FPPrecision) + 'f}'
-                hfmt = self.Delim.join(len(headers)*[gfmt]) + '\n'
-                dfmt = self.Delim.join(k*[gfmt] + (len(headers)-k)*[fpfmt]) + '\n'
+                hfmt = self.Delim.join(len(headers)*[gfmt]) + newline
+                dfmt = self.Delim.join(k*[gfmt] + (len(headers)-k)*[fpfmt]) + newline
                 fd.write(hfmt.format(*headers))
                 for label, st, percentile in zip(labels, statistics, percentiles):
                     fd.write(dfmt.format(label, st.nobs, *st.minmax, st.mean,
@@ -551,10 +583,11 @@ class WordEmbedding:
 
         if file:
             with open(file, 'w') as fd:
+                newline = os.linesep
                 gfmt =  '{}'
                 fpfmt = '{:<' + str(self.ColWidth) + '.' + str(self.FPPrecision) + 'f}'
-                hfmt = self.Delim.join(len(headers)*[gfmt]) + '\n'
-                dfmt = self.Delim.join(k*[gfmt] + (len(headers)-k)*[fpfmt]) + '\n'
+                hfmt = self.Delim.join(len(headers)*[gfmt]) + newline
+                dfmt = self.Delim.join(k*[gfmt] + (len(headers)-k)*[fpfmt]) + newline
                 fd.write(hfmt.format(*headers))
                 for data in zip(self._word_pairs(k, index=index), *[self.get(key) for key in headers[k:]]):
                     fd.write(dfmt.format(*data[0], *data[1:]))
