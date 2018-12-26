@@ -2,9 +2,13 @@
 
 Classes:
     :class:`WordEmbeddingAnalysis`
+
+Todo:
+    * Fairness in unsupervised learning, PCA and SVM (Olfat and Aswani 2018,
+      Spectral algorithms for computing fair SVM) (Olfat and Aswani 2018,
+      Convex formulations for fair PCA).
 """
 # https://medium.com/@luckylwk/visualising-high-dimensional-datasets-using-pca-and-t-sne-in-python-8ef87e7915b
-# https://docs.scipy.org/doc/scipy/reference/stats.html
 # https://stackoverflow.com/questions/10374930/matplotlib-annotating-a-3d-scatter-plot
 # https://www.datacamp.com/community/tutorials/apache-spark-python
 # https://jakevdp.github.io/PythonDataScienceHandbook/05.12-gaussian-mixtures.html
@@ -33,6 +37,7 @@ import sklearn.cluster
 import sklearn.mixture
 import scipy
 from .clustering.mst import MSTClustering
+from .utils import (n_choose_k)
 
 
 __all__ = ['WordEmbeddingAnalysis']
@@ -354,9 +359,9 @@ class WordEmbeddingAnalysis:
                 for k in tkey:
                     for e in self.embedding:
                         # TODO: Detect if key refers to a pair/triple attribute (hack)
-                        if len(e.get(k)) == e._flat_size(2, e._pairProcessingCount):
+                        if len(e.get(k)) == n_choose_k(e._pairProcessingCount, 2):
                             n = e._pairProcessingCount
-                        elif len(e.get(k)) == e._flat_size(3, e._tripleProcessingCount):
+                        elif len(e.get(k)) == n_choose_k(e._tripleProcessingCount, 3):
                             n = e._tripleProcessingCount
                         matrix = numpy.zeros(shape=(n, n), dtype=numpy.float32)
                         matrix[numpy.tril_indices(n, -1)] = e.get(k)
