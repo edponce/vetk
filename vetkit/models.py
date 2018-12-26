@@ -5,13 +5,14 @@ Todo:
 """
 
 
+import os
 from math import ceil
 from collections import OrderedDict
 import numpy
 from .utils import convert_to_range
 
 
-def load_vectors_word2vec(file, load_vocab=True, lines=None, dtype=numpy.float32):
+def load_vectors_word2vec(file, load_vocab=True, filter=None, blacklist=False, dtype=numpy.float32):
     """Load vectors of embedding model from given file in word2vec format.
 
     Notes:
@@ -23,11 +24,13 @@ def load_vectors_word2vec(file, load_vocab=True, lines=None, dtype=numpy.float32
         load_vocab (bool, optional): If True, vocabulary will be extracted from
             file (occurrences will be set to 1). Otherwise an empty vocabulary
             is returned. Default is True.
-        lines (range, slice, list, tuple, float, int, dict, None, optional):
+        filter (range, slice, list, tuple, float, int, dict, None, optional):
             Values representing a filter operation for file processing, see
             *utils.convert_to_range()*. If string, consider it a file with a
-            blacklist of words. If None, entire file is processed.
-            Default is None.
+            list of words. If None, entire file is processed. Default is None.
+        blacklist (bool, optional): If True, consider *filter* as a blacklist.
+            If False, consider *filter* as a whitelist. Only applicable when
+            *filter* is a dict. Default is False.
         dtype (numpy.dtype, optional): Type of vector data. Default is
             numpy.float32.
 
@@ -49,12 +52,11 @@ def load_vectors_word2vec(file, load_vocab=True, lines=None, dtype=numpy.float32
         binary = True
 
     # Get lines to process
-    if isinstance(lines, dict):
-        blacklist = True
+    if isinstance(filter, dict):
         erange = convert_to_range(None, dims[0])
     else:
-        blacklist = False
-        erange = convert_to_range(lines, dims[0])
+        blacklist = None  # Disable blacklisting
+        erange = convert_to_range(filter, dims[0])
 
     n_elems = ceil((erange[1] - erange[0]) / erange[2])
     vectors = numpy.empty(shape=(n_elems, dims[1]), dtype=dtype)
@@ -101,7 +103,7 @@ def load_vectors_word2vec(file, load_vocab=True, lines=None, dtype=numpy.float32
                 if i < erange[0]: continue
                 if i == next_line:
                     word = word.decode()
-                    if not blacklist or (blacklist and word not in lines):
+                    if blacklist is None or (not blacklist and word in filter) or (blacklist and word not in filter):
                         if load_vocab:
                             vocab[word] = 1
                         vectors[j][:] = numpy.frombuffer(vector, dtype=dtype)
@@ -109,7 +111,7 @@ def load_vectors_word2vec(file, load_vocab=True, lines=None, dtype=numpy.float32
                     next_line += erange[2]
 
             # Check if processing stopped before it should, not if blacklisting
-            if not blacklist and j < n_elems and erange[1] - j >= erange[2]:
+            if blacklist is None and j < n_elems and erange[1] - j >= erange[2]:
                 raise EOFError("failed to parse vectors file")
     else:
         with open(file) as fd:
@@ -121,7 +123,7 @@ def load_vectors_word2vec(file, load_vocab=True, lines=None, dtype=numpy.float32
                 if i >= erange[1]: break
                 if i == next_line:
                     word, vector = line.split(maxsplit=1)
-                    if not blacklist or (blacklist and word not in lines):
+                    if blacklist is None or (not blacklist and word in filter) or (blacklist and word not in filter):
                         if load_vocab:
                             vocab[word] = 1
                         vectors[j][:] = numpy.fromstring(vector, dtype, sep=' ')
@@ -134,7 +136,7 @@ def load_vectors_word2vec(file, load_vocab=True, lines=None, dtype=numpy.float32
     return vectors, vocab
 
 
-def load_vocabulary_word2vec(file, lines=None):
+def load_vocabulary_word2vec(file, filter=None, blacklist=False):
     """Load vocabulary of embedding model from given file in word2vec format.
 
     Notes:
@@ -142,12 +144,20 @@ def load_vocabulary_word2vec(file, lines=None):
 
     Args:
         file (str): Input file.
-        lines (range, slice, list, tuple, float, int, None, optional): Values
-            representing a filter operation for file processing, see
-            *utils.convert_to_range()*. If None, entire file is processed.
-            Default is None.
+        filter (range, slice, list, tuple, float, int, dict, None, optional):
+            Values representing a filter operation for file processing, see
+            *utils.convert_to_range()*. If string, consider it a file with a
+            list of words. If None, entire file is processed. Default is None.
+        blacklist (bool, optional): If True, consider *filter* as a blacklist.
+            If False, consider *filter* as a whitelist. Only applicable when
+            *filter* is a dict. Default is False.
     """
-    erange = convert_to_range(lines, file)
+    # Get lines to process
+    if isinstance(filter, dict):
+        erange = convert_to_range(None, file)
+    else:
+        blacklist = None
+        erange = convert_to_range(filter, file)
     vocab = OrderedDict()
     with open(file) as fd:
         next_line = erange[0]
@@ -156,7 +166,8 @@ def load_vocabulary_word2vec(file, lines=None):
             if erange[1] is not None and i >= erange[1]: break
             if i == next_line:
                 word, count = line.split(maxsplit=1)
-                vocab[word] = int(count)
+                if blacklist is None or (not blacklist and word in filter) or (blacklist and word not in filter):
+                    vocab[word] = int(count)
                 next_line += erange[2]
     return vocab
 

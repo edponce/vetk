@@ -185,6 +185,7 @@ def extract_tokens_from_file(file, delim=None, size_hint=2**20):
 
     Notes:
         * Parses on newlines and assumes last line of file ends with a newline.
+        * Returns a dictionary so that token lookups are O(1).
 
     Args:
         file (str): Input file.

@@ -5,9 +5,9 @@ Classes:
 
 Todo:
     * Provide list-like and slice support to vocabulary data structure.
-    * Vectors can be filtered by range, fraction, amount, blacklist, whitelist,
-      occurrence values, regex, etc.. Should filtering be performed during
-      load, runtime, dump, or all?
+    * Vectors can be filtered by contiguous range, fraction, amount, blacklist,
+      whitelist, occurrence values, regex, etc.. Should filtering be performed
+      during load, runtime, or both?
         * For very large datasets, filtering during load is necessary.
         * Runtime can be easily implemented with a method to trigger filtering.
         * Current implementation supports filtering only during load.
@@ -45,10 +45,13 @@ class WordEmbedding:
             is empty OrderedDict.
 
     Members:
-        embeddingFilter (range, slice, list, tuple, float, int, None,
-            optional): Values representing a range to filter file processing,
-            see *utils.convert_to_range()*. Filtering is only performed during
-            load operations (runtime or dump are not filtered). Default is 1.0.
+        embeddingFilter (range, slice, list, tuple, float, int, None): Values
+            representing a range to filter file processing, see
+            *utils.convert_to_range()*. Filtering is only performed during load
+            operations (runtime or dump are not filtered). Default is 1.0.
+        blacklistFilter (bool): If True, consider *filter* as a blacklist.  If
+            False, consider *filter* as a whitelist. Only applicable when
+            *filter* is a dict. Default is False.
 
     Notes:
         * Vectors and vocabulary should match and be ordered by word
@@ -96,13 +99,14 @@ class WordEmbedding:
     Delim = ' '
 
     def __init__(self, vectors=None, vocab=None, label="", model='word2vec',
-                 filt=1., dtype=numpy.float32):
+                 filter=1., blacklist=False, dtype=numpy.float32):
         # Use reset() to indirectly create internal object's data members
         self.reset()
 
         self.label = label
         self.model = model
-        self.embeddingFilter = filt
+        self.embeddingFilter = filter
+        self.blacklistFilter = blacklist
         self.dtype = dtype
 
         self.load_embedding_model(vectors, vocab)
@@ -112,8 +116,8 @@ class WordEmbedding:
         self.label = ""
         self.model = 'word2vec'
         self._embeddingFilter = 1.
+        self.blacklistFilter = False
         self.dtype = numpy.float32
-        #self.embeddingWhitelist = []
         self.clear()
 
     def clear(self):
@@ -210,13 +214,13 @@ class WordEmbedding:
     @embeddingFilter.setter
     def embeddingFilter(self, val):
         if isinstance(val, str):
-            # File with blacklist tokens
+            # File with tokens
             self._embeddingFilter = extract_tokens_from_file(val)
         elif isinstance(val, dict):
-            # Dictionary with blacklist tokens
+            # Dictionary with tokens
             self._embeddingFilter = val
-        elif hasattr(val, (list, tuple)) and isinstance(val[0], str):
-            # Iterable with blacklist tokens
+        elif isinstance(val, (list, tuple)) and isinstance(val[0], str):
+            # Iterable with tokens
             self._embeddingFilter = {}
             for token in val:
                 self._embeddingFilter[token] = self._embeddingFilter.get(token, 0) + 1
@@ -272,6 +276,9 @@ class WordEmbedding:
     def _load_vectors(self, vectors):
         """Load a vector embedding model from a file or similar data structure.
 
+        Todo:
+            * Place numpy.ndarray, list, tuple copy into a function.
+
         Args:
             vectors: See :class:`WordEmbedding`.
 
@@ -285,9 +292,9 @@ class WordEmbedding:
                 self._fileVectors = vectors
                 if len(self._vocabulary) == 0:
                     self._fileVocabulary = self._fileVectors
-                    self._vectors, self._vocabulary = load_vectors_word2vec(vectors, True, self.embeddingFilter, self.dtype)
+                    self._vectors, self._vocabulary = load_vectors_word2vec(vectors, True, self.embeddingFilter, self.blacklistFilter, self.dtype)
                 else:
-                    self._vectors, _ = load_vectors_word2vec(vectors, False, self.embeddingFilter, self.dtype)
+                    self._vectors, _ = load_vectors_word2vec(vectors, False, self.embeddingFilter, self.blacklistFilter, self.dtype)
             else:
                 raise ValueError("invalid model value '{}'".format(self.model))
         elif isinstance(vectors, numpy.ndarray):
@@ -304,6 +311,8 @@ class WordEmbedding:
     def _load_vocabulary(self, vocab):
         """Load vocabulary from file or given object.
 
+        Todo:
+            * Place dict copy into a function.
         Args:
             vocab: See :class:`WordEmbedding`.
 
@@ -315,7 +324,7 @@ class WordEmbedding:
         if isinstance(vocab, str):
             if self.model == 'word2vec':
                 self._fileVocabulary = vocab
-                self._vocabulary = load_vocabulary_word2vec(vocab, self.embeddingFilter)
+                self._vocabulary = load_vocabulary_word2vec(vocab, self.embeddingFilter, self.blacklistFilter)
             else:
                 raise ValueError("invalid model '{}'".format(self.model))
         elif isinstance(vocab, dict):
