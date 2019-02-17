@@ -10,8 +10,41 @@ from math import ceil
 from collections import OrderedDict
 import numpy
 from .utils import convert_to_range
+import smarttimers
 
 
+def read_word_vector(fd, vector_bytes, chunk_size=2**20):
+    chunk = b''
+    while True:
+        # First part of current line
+        if not chunk:
+            chunk = fd.read(chunk_size)
+
+            # EOF?
+            if not chunk: break
+
+        blank_idx = chunk.index(b' ')  # find word/vector separator
+        word = chunk[:blank_idx]
+        chunk = chunk[blank_idx + 1:]  # skip blank space
+
+        # Read remaining vector bytes
+        while (len(chunk) <= vector_bytes):
+            partial_chunk = fd.read(chunk_size)
+
+            # EOF? We are not done processing file
+            if not partial_chunk: break
+            chunk += partial_chunk
+
+        # Extract vector
+        vector = chunk[:vector_bytes]
+
+        # Trim chunk, skip newline
+        chunk = chunk[vector_bytes + 1:]
+
+        yield word, vector
+
+
+@smarttimers.smarttime
 def load_vectors_word2vec(file, load_vocab=True, filter=None, blacklist=False, dtype=numpy.float32):
     """Load vectors of embedding model from given file in word2vec format.
 
@@ -24,13 +57,13 @@ def load_vectors_word2vec(file, load_vocab=True, filter=None, blacklist=False, d
         load_vocab (bool, optional): If True, vocabulary will be extracted from
             file (occurrences will be set to 1). Otherwise an empty vocabulary
             is returned. Default is True.
-        filter (range, slice, list, tuple, float, int, dict, None, optional):
+        filter (range, slice, list, tuple, float, int, set, dict, None, optional):
             Values representing a filter operation for file processing, see
             *utils.convert_to_range()*. If string, consider it a file with a
             list of words. If None, entire file is processed. Default is None.
         blacklist (bool, optional): If True, consider *filter* as a blacklist.
             If False, consider *filter* as a whitelist. Only applicable when
-            *filter* is a dict. Default is False.
+            *filter* is a set or dict. Default is False.
         dtype (numpy.dtype, optional): Type of vector data. Default is
             numpy.float32.
 
@@ -52,7 +85,7 @@ def load_vectors_word2vec(file, load_vocab=True, filter=None, blacklist=False, d
         binary = True
 
     # Get lines to process
-    if isinstance(filter, dict):
+    if isinstance(filter, (set, dict)):
         erange = convert_to_range(None, dims[0])
     else:
         blacklist = None  # Disable blacklisting
@@ -64,41 +97,43 @@ def load_vectors_word2vec(file, load_vocab=True, filter=None, blacklist=False, d
 
     if binary:
         with open(file, 'rb') as fd:
-            _ = fd.readline()  # discard header, already read
+            next(fd)  # discard header, already read
             next_line = erange[0]
             line_length = dims[1] * 4  # float is default in word2vec
             chunk_size = 2**20  # read file in 1MB chunks
-            chunk = b''
+#            chunk = b''
+            gen = read_word_vector(fd, line_length, chunk_size)
             i = -1  # begin at -1 because i+=1 is done before comparisons
             j = 0
             while True:
                 i += 1
                 if i >= erange[1]: break
 
-                # First part of current line
-                if not chunk:
-                    chunk = fd.read(chunk_size)
-
-                    # EOF?
-                    if not chunk: break
-
-                blank_idx = chunk.index(b' ')  # find word/vector separator
-                word = chunk[:blank_idx]
-                chunk = chunk[blank_idx + 1:]  # skip blank space
-
-                # Read remaining vector bytes
-                while (len(chunk) <= line_length):
-                    partial_chunk = fd.read(chunk_size)
-
-                    # EOF? We are not done processing file
-                    if not partial_chunk: break
-                    chunk += partial_chunk
-
-                # Extract vector
-                vector = chunk[:line_length]
-
-                # Trim chunk, skip newline
-                chunk = chunk[line_length + 1:]
+#                # First part of current line
+#                if not chunk:
+#                    chunk = fd.read(chunk_size)
+#
+#                    # EOF?
+#                    if not chunk: break
+#
+#                blank_idx = chunk.index(b' ')  # find word/vector separator
+#                word = chunk[:blank_idx]
+#                chunk = chunk[blank_idx + 1:]  # skip blank space
+#
+#                # Read remaining vector bytes
+#                while (len(chunk) <= line_length):
+#                    partial_chunk = fd.read(chunk_size)
+#
+#                    # EOF? We are not done processing file
+#                    if not partial_chunk: break
+#                    chunk += partial_chunk
+#
+#                # Extract vector
+#                vector = chunk[:line_length]
+#
+#                # Trim chunk, skip newline
+#                chunk = chunk[line_length + 1:]
+                word, vector = next(gen)
 
                 if i < erange[0]: continue
                 if i == next_line:
@@ -115,7 +150,7 @@ def load_vectors_word2vec(file, load_vocab=True, filter=None, blacklist=False, d
                 raise EOFError("failed to parse vectors file")
     else:
         with open(file) as fd:
-            _ = fd.readline()  # discard header, already read
+            next(fd)  # discard header, already read
             next_line = erange[0]
             j = 0
             for i, line in enumerate(fd):
@@ -130,12 +165,13 @@ def load_vectors_word2vec(file, load_vocab=True, filter=None, blacklist=False, d
                         j += 1
                     next_line += erange[2]
 
-    # Resize array, only if given a blacklist where final size is unknown
+    # Resize array, only if given a blacklist where final size was unknown
     if j < vectors.shape[0]:
         vectors = vectors[:j,:]
     return vectors, vocab
 
 
+@smarttimers.smarttime
 def load_vocabulary_word2vec(file, filter=None, blacklist=False):
     """Load vocabulary of embedding model from given file in word2vec format.
 
@@ -144,16 +180,16 @@ def load_vocabulary_word2vec(file, filter=None, blacklist=False):
 
     Args:
         file (str): Input file.
-        filter (range, slice, list, tuple, float, int, dict, None, optional):
+        filter (range, slice, list, tuple, float, int, set, dict, None, optional):
             Values representing a filter operation for file processing, see
             *utils.convert_to_range()*. If string, consider it a file with a
             list of words. If None, entire file is processed. Default is None.
         blacklist (bool, optional): If True, consider *filter* as a blacklist.
             If False, consider *filter* as a whitelist. Only applicable when
-            *filter* is a dict. Default is False.
+            *filter* is a set or dict. Default is False.
     """
     # Get lines to process
-    if isinstance(filter, dict):
+    if isinstance(filter, (set, dict)):
         erange = convert_to_range(None, file)
     else:
         blacklist = None
@@ -172,6 +208,7 @@ def load_vocabulary_word2vec(file, filter=None, blacklist=False):
     return vocab
 
 
+@smarttimers.smarttime
 def dump_vectors_word2vec(file, vectors, vocab, binary=False):
     """Write vectors of embedding model to given file in word2vec format.
 
@@ -203,6 +240,7 @@ def dump_vectors_word2vec(file, vectors, vocab, binary=False):
                 fd.write(fmt.format(word, *vector))
 
 
+@smarttimers.smarttime
 def dump_vocabulary_word2vec(file, vocab):
     """Write vocabulary of embedding model to given file in word2vec format.
 

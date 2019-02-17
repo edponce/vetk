@@ -6,8 +6,10 @@ from math import ceil
 from collections import OrderedDict
 import numpy
 from .utils import convert_to_range
+import smarttimers
 
 
+@smarttimers.smarttime
 def load_vectors_glove(file, load_vocab=True, filter=None, blacklist=False, dtype=numpy.float32):
     """Load vectors of embedding model from given file in gloVe format.
 
@@ -16,13 +18,13 @@ def load_vectors_glove(file, load_vocab=True, filter=None, blacklist=False, dtyp
         load_vocab (bool, optional): If True, vocabulary will be extracted from
             file (occurrences will be set to 1). Otherwise an empty vocabulary
             is returned. Default is True.
-        filter (range, slice, list, tuple, float, int, dict, None, optional):
+        filter (range, slice, list, tuple, float, int, set, dict, None, optional):
             Values representing a filter operation for file processing, see
             *utils.convert_to_range()*. If string, consider it a file with a
             list of words. If None, entire file is processed. Default is None.
         blacklist (bool, optional): If True, consider *filter* as a blacklist.
             If False, consider *filter* as a whitelist. Only applicable when
-            *filter* is a dict. Default is False.
+            *filter* is a set or dict. Default is False.
         dtype (numpy.dtype, optional): Type of vector data. Default is
             numpy.float32.
 
@@ -30,7 +32,7 @@ def load_vectors_glove(file, load_vocab=True, filter=None, blacklist=False, dtyp
         numpy.ndarray, OrderedDict: Vectors and vocabulary of embedding model.
     """
     # Get lines to process
-    if isinstance(filter, dict):
+    if isinstance(filter, (set, dict)):
         erange = convert_to_range(None, file)
     else:
         blacklist = None  # Disable blacklisting
@@ -66,6 +68,7 @@ def load_vectors_glove(file, load_vocab=True, filter=None, blacklist=False, dtyp
     return vectors, vocab
 
 
+@smarttimers.smarttime
 def load_vocabulary_glove(file, filter=None, blacklist=False):
     """Load vocabulary of embedding model from given file in gloVe format.
 
@@ -74,16 +77,16 @@ def load_vocabulary_glove(file, filter=None, blacklist=False):
 
     Args:
         file (str): Input file.
-        filter (range, slice, list, tuple, float, int, dict, None, optional):
+        filter (range, slice, list, tuple, float, int, set, dict, None, optional):
             Values representing a filter operation for file processing, see
             *utils.convert_to_range()*. If string, consider it a file with a
             list of words. If None, entire file is processed. Default is None.
         blacklist (bool, optional): If True, consider *filter* as a blacklist.
             If False, consider *filter* as a whitelist. Only applicable when
-            *filter* is a dict. Default is False.
+            *filter* is a set or dict. Default is False.
     """
     # Get lines to process
-    if isinstance(filter, dict):
+    if isinstance(filter, (set, dict)):
         erange = convert_to_range(None, file)
     else:
         blacklist = None
@@ -102,6 +105,7 @@ def load_vocabulary_glove(file, filter=None, blacklist=False):
     return vocab
 
 
+@smarttimers.smarttime
 def dump_vectors_glove(file, vectors, vocab):
     """Write vectors of embedding model to given file in gloVe format.
 
@@ -121,6 +125,7 @@ def dump_vectors_glove(file, vectors, vocab):
             fd.write(fmt.format(word, *vector))
 
 
+@smarttimers.smarttime
 def dump_vocabulary_glove(file, vocab):
     """Write vocabulary of embedding model to given file in gloVe format.
 
