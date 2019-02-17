@@ -13,8 +13,8 @@ Author
 ::
 
     N: Eduardo Ponce
-    E: edponce2010@gmail.com
-    W: https://github.com/edponce
+    E: <edponce2010@gmail.com>
+    W: <https://github.com/edponce>
     C: TN, USA
     D: Lead developer
 
@@ -25,8 +25,8 @@ Contributors
 ::
 
     N: Chris Gropp
-    E: cgropp@clemson.edu
-    W: https://github.com/groppcw
+    E: <cgropp@clemson.edu>
+    W: <https://github.com/groppcw>
     C: NC, USA
     D: Developer
 
