@@ -4,6 +4,7 @@ Classes:
     :class:`WordEmbedding`
 
 Todo:
+    * Change *filter* parameter/attribute name because of built-in filter().
     * Provide list-like and slice support to vocabulary data structure.
     * Vectors can be filtered by contiguous range, fraction, amount, blacklist,
       whitelist, occurrence values, regex, etc.. Should filtering be performed
@@ -24,9 +25,11 @@ from collections import OrderedDict
 from copy import deepcopy
 import numpy
 import scipy
-from .utils import (convert_to_range, n_choose_k, extract_tokens_from_file)
-from .models import (load_vectors_word2vec, load_vocabulary_word2vec,
-                     dump_vectors_word2vec, dump_vocabulary_word2vec)
+from .utils import (convert_to_range, n_choose_k, tokenize_file)
+from .word2vec_models import (load_vectors_word2vec, load_vocabulary_word2vec,
+                              dump_vectors_word2vec, dump_vocabulary_word2vec)
+from .glove_models import (load_vectors_glove, load_vocabulary_glove,
+                           dump_vectors_glove, dump_vocabulary_glove)
 
 
 __all__ = ['WordEmbedding']
@@ -43,15 +46,19 @@ class WordEmbedding:
         vocabulary (str, dict, optional): If string, then consider it as a file
             in word2vec format. If dict, then a deep copy is performed. Default
             is empty OrderedDict.
-
-    Members:
-        embeddingFilter (range, slice, list, tuple, float, int, None): Values
+        label (str, optional): Name/identifier of instance. Default is empty
+            string.
+        model (str, optional): Name of model to use for loading/dumping word
+            embeddings. Defaults is 'word2vec'.
+        filter (range, slice, list, tuple, float, int, set, dict, None): Values
             representing a range to filter file processing, see
             *utils.convert_to_range()*. Filtering is only performed during load
             operations (runtime or dump are not filtered). Default is 1.0.
-        blacklistFilter (bool): If True, consider *filter* as a blacklist.  If
-            False, consider *filter* as a whitelist. Only applicable when
-            *filter* is a dict. Default is False.
+        blacklist (bool): If True, consider *filter* as a blacklist.  If False,
+            consider *filter* as a whitelist. Only applicable when *filter* is
+            a set or dict. Default is False.
+        dtype (numpy.ndarray, optional): Type of vector embedding values.
+            Default is numpy.float32.
 
     Notes:
         * Vectors and vocabulary should match and be ordered by word
@@ -98,8 +105,14 @@ class WordEmbedding:
     ColWidth = 10
     Delim = ' '
 
-    def __init__(self, vectors=None, vocab=None, label="", model='word2vec',
-                 filter=1., blacklist=False, dtype=numpy.float32):
+    def __init__(self,
+                 vectors=None,
+                 vocabulary=None,
+                 label="",
+                 model='word2vec',
+                 filter=1.,
+                 blacklist=False,
+                 dtype=numpy.float32):
         # Use reset() to indirectly create internal object's data members
         self.reset()
 
@@ -109,7 +122,7 @@ class WordEmbedding:
         self.blacklistFilter = blacklist
         self.dtype = dtype
 
-        self.load_embedding_model(vectors, vocab)
+        self.load_embedding_model(vectors, vocabulary)
 
     def reset(self):
         """Reset instance to initial state."""
@@ -154,6 +167,26 @@ class WordEmbedding:
 
     def __len__(self):
         return self.vectors.shape[0]
+
+    def __iter__(self):
+        """Support iteration via a generator.
+
+        .. code: python
+
+            # Loop through all vocabulary and vector pairs
+            v = vetkit.WordEmbedding('vectors.txt')
+            for voc, vec, in v:
+                print(voc, vec)
+
+            # Create iterator from generator and iterate through data
+            it = iter(v)
+            voc, vec = next(it)
+            voc, vec = next(it)
+
+        Returns:
+            generator: Tuple of vocabulary and vectors.
+        """
+        return ((voc,vec) for voc, vec in zip(self.vocabulary, self.vectors))
 
     def __getitem__(self, *keys):
         """Use dictionary syntax to access vector/vocabulary.
@@ -215,17 +248,15 @@ class WordEmbedding:
     def embeddingFilter(self, val):
         if isinstance(val, str):
             # File with tokens
-            self._embeddingFilter = extract_tokens_from_file(val)
-        elif isinstance(val, dict):
-            # Dictionary with tokens
+            self._embeddingFilter = tokenize_file(val)
+        elif isinstance(val, (set, dict)):
+            # Set or dictionary with tokens
             self._embeddingFilter = val
         elif isinstance(val, (list, tuple)) and isinstance(val[0], str):
             # Iterable with tokens
-            self._embeddingFilter = {}
-            for token in val:
-                self._embeddingFilter[token] = self._embeddingFilter.get(token, 0) + 1
+            self._embeddingFilter = set(val)
         else:
-            # Range-like expression
+            # Assume range-like expression
             self._embeddingFilter = val
 
     @property
@@ -295,14 +326,19 @@ class WordEmbedding:
                     self._vectors, self._vocabulary = load_vectors_word2vec(vectors, True, self.embeddingFilter, self.blacklistFilter, self.dtype)
                 else:
                     self._vectors, _ = load_vectors_word2vec(vectors, False, self.embeddingFilter, self.blacklistFilter, self.dtype)
+            elif self.model == 'glove':
+                self._fileVectors = vectors
+                if len(self._vocabulary) == 0:
+                    self._fileVocabulary = self._fileVectors
+                    self._vectors, self._vocabulary = load_vectors_glove(vectors, True, self.embeddingFilter, self.blacklistFilter, self.dtype)
+                else:
+                    self._vectors, _ = load_vectors_glove(vectors, False, self.embeddingFilter, self.blacklistFilter, self.dtype)
             else:
                 raise ValueError("invalid model value '{}'".format(self.model))
         elif isinstance(vectors, numpy.ndarray):
-            self._fileVectors = ""
             r = convert_to_range(self.embeddingFilter, vectors)
             self._vectors = deepcopy(vectors[slice(*r)])
         elif isinstance(vectors, (list, tuple)):
-            self._fileVectors = ""
             r = convert_to_range(self.embeddingFilter, vectors)
             self._vectors = numpy.array(vectors[slice(*r)])
         else:
@@ -313,6 +349,7 @@ class WordEmbedding:
 
         Todo:
             * Place dict copy into a function.
+
         Args:
             vocab: See :class:`WordEmbedding`.
 
@@ -325,10 +362,12 @@ class WordEmbedding:
             if self.model == 'word2vec':
                 self._fileVocabulary = vocab
                 self._vocabulary = load_vocabulary_word2vec(vocab, self.embeddingFilter, self.blacklistFilter)
+            elif self.model == 'glove':
+                self._fileVocabulary = vocab
+                self._vocabulary = load_vocabulary_glove(vocab, self.embeddingFilter, self.blacklistFilter)
             else:
                 raise ValueError("invalid model '{}'".format(self.model))
         elif isinstance(vocab, dict):
-            self._fileVocabulary = ""
             r = convert_to_range(self.embeddingFilter, vocab)
             line_curr = r[0]
             for i, (word, count) in enumerate(vocab.items()):
@@ -340,17 +379,17 @@ class WordEmbedding:
         else:
             raise TypeError("invalid vocabulary type '{}'".format(type(vocab)))
 
-    def common(self, n=10):
-        """Find the words/vectors with most or least occurrences.
+    def common_words(self, n=10):
+        """Find the words with most or least occurrences.
 
         Args:
             n (int, optional): If positive, then number of most common words.
                 If negative, then number of least common words.
 
         Returns:
-            list: List of common words.
+            tuple: Common words.
         """
-        vocab = list(self.vocabulary)
+        vocab = tuple(self.vocabulary)
         return vocab[:n] if n >= 0 else vocab[n:]
 
     def dump_embedding_model(self, vectors=None, vocab=None, binary=False):
@@ -383,6 +422,8 @@ class WordEmbedding:
     def _dump_vectors(self, file, binary=False):
         """Write vectors from an embedding model.
 
+        Todo:
+            * Currently, only applies to word2vec model.
         Args:
             file (str): Output file.
             binary (bool, optional): Set write to use binary format. Default is
@@ -390,6 +431,8 @@ class WordEmbedding:
         """
         if self.model == 'word2vec':
             dump_vectors_word2vec(file, self.vectors, self.vocabulary, binary)
+        elif self.model == 'glove':
+            dump_vectors_glove(file, self.vectors, self.vocabulary)
         else:
             raise ValueError("invalid model value '{}'".format(self.model))
 
@@ -401,6 +444,8 @@ class WordEmbedding:
         """
         if self.model == 'word2vec':
             dump_vocabulary_word2vec(file, self.vocabulary)
+        elif self.model == 'glove':
+            dump_vocabulary_glove(file, self.vocabulary)
         else:
             raise ValueError("invalid model value '{}'".format(self.model))
 
@@ -409,7 +454,7 @@ class WordEmbedding:
         if not self._is_consistent():
             raise UserWarning("vector and vocabulary are inconsistent in size")
 
-        for word, vector in zip(self.vocabulary.keys(), self.vectors):
+        for word, vector in zip(self.vocabulary, self.vectors):
             print(word, vector)
 
     def _print_vocabulary(self):
@@ -444,7 +489,7 @@ class WordEmbedding:
         Notes:
             * Pre/trailing whitespaces are ignored
         """
-        return self.__dict__[re.sub('\s+', '_', key.strip()).lower()]
+        return vars(self)[re.sub('\s+', '_', key.strip()).lower()]
 
     def _word_pairs(self, k, index=False):
         """Find word/index pairs/triplets.
@@ -628,7 +673,7 @@ class WordEmbedding:
         # Allocate arrays
         for i, h in enumerate(headers):
             if i >= k:
-                self.__dict__[h] = numpy.empty(shape=nlines, dtype=self.dtype)
+                vars(self)[h] = numpy.empty(shape=nlines, dtype=self.dtype)
 
         with open(file) as fd:
             _ = fd.readline()  # skip headers
@@ -636,4 +681,4 @@ class WordEmbedding:
                 data = line.strip().split(self.Delim)
                 for j, h in enumerate(headers):
                     if j >= k:
-                        self.__dict__[h][i] = self.dtype(data[j])
+                        vars(self)[h][i] = self.dtype(data[j])
