@@ -1,9 +1,10 @@
 Vector Embedding Toolkit
 ========================
 
-![vetkit-logo](demo/vetkit-logo.png)
+.. figure:: demo/vetkit-logo.png
+    :alt: vetkit-logo
 
-This work is currently under development for the Open Source Lab at ORNL.
+This work is currently under development.
 
 
 Workflow
