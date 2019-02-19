@@ -1,3 +1,9 @@
+.. image:: https://img.shields.io/badge/license-MIT-blue.svg
+   :target: https://github.com/edponce/vetk/blob/master/LICENSE
+   :alt: License
+
+|
+
 Vector Embedding Toolkit
 ========================
 
