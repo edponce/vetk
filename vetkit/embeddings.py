@@ -486,10 +486,16 @@ class WordEmbedding:
         Key is used in lower-case form and spaces are replaced with
         underscores, this allows using 'angle pairs' for self.angle_pairs
 
+        Todo:
+            * try-except used because 'vectors' is actually '_vectors'
+
         Notes:
             * Pre/trailing whitespaces are ignored
         """
-        return vars(self)[re.sub('\s+', '_', key.strip()).lower()]
+        try:
+            return vars(self)[re.sub('\s+', '_', key.strip()).lower()]
+        except Exception as ex:
+            return vars(self)['_' + key.strip().lower()]
 
     def _word_pairs(self, k, index=False):
         """Find word/index pairs/triplets.

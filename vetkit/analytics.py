@@ -147,7 +147,7 @@ class WordEmbeddingAnalysis:
             elif levels == 2:
                 dummy = len(data[0])
             iter_data = data
-        except:
+        except Exception as ex:
             iter_data = [data]
         return iter_data
 

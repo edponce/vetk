@@ -14,3 +14,6 @@ htmlcov/
 **/*.log
 flake8.out
 .pypirc
+**/.ipynb_checkpoints/
+smarttimers/
+TODO.txt
